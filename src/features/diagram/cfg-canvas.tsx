@@ -136,6 +136,16 @@ export function CfgCanvas({
 
   const onKeyDown = (event: KeyboardEvent) => {
     const mod = event.metaKey || event.ctrlKey;
+    if (event.key === "Enter" && !mod) {
+      // Enter on a focused node jumps to its code, like a double-click.
+      const id = (event.target as Element).closest(".react-flow__node")?.getAttribute("data-id");
+      const node = cfg.nodes.find((n) => n.id === id);
+      if (node) {
+        onOpenNode(node);
+        event.preventDefault();
+      }
+      return;
+    }
     if (!mod) return;
     const key = event.key.toLowerCase();
     if ((key === "z" && event.shiftKey) || key === "y") onRedo();

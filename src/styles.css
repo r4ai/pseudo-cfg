@@ -264,6 +264,15 @@
   stroke-dasharray: none;
 }
 
+.react-flow__node:focus-visible {
+  outline: none;
+}
+.react-flow__node:focus-visible .cfg-shape {
+  stroke: var(--diagram-accent);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+}
+
 .cfg-handle {
   top: 50% !important;
   left: 50% !important;

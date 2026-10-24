@@ -130,6 +130,8 @@ const CONTROLS: [keys: string[], action: string][] = [
   [["⌘/Ctrl", "Scroll"], "Zoom"],
   [["Click"], "Highlight the node's source lines"],
   [["Double-click"], "Jump to the node's code"],
+  [["Tab", "Enter"], "Focus a node, then jump to its code"],
+  [["↑↓←→"], "Nudge the focused node"],
   [["⌘/Ctrl", "Z"], "Undo a layout change"],
   [["⌘/Ctrl", "⇧", "Z"], "Redo"],
   [["⌘/Ctrl", "A"], "Select all nodes"],
