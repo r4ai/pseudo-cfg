@@ -90,13 +90,101 @@ describe("buildCfg", () => {
     const { diagnostics } = buildCfg("if x:\nbreak\nelse:\n  y", "block");
     expect(diagnostics.map((d) => d.message)).toEqual([
       "Expected an indented block",
-      "'else' without a matching 'if'",
       "'break' outside loop",
+      "'else' without a matching 'if'",
     ]);
   });
 
   it("ignores comments, including `#` inside strings", () => {
     const { cfg } = buildCfg("# heading\nprint('#1')  # trailing", "block");
     expect(cfg.nodes.map((n) => n.label)).toEqual(["Start", "print('#1')", "End"]);
+  });
+
+  it("does not mistake identifiers that start with a keyword for that keyword", () => {
+    const { cfg } = buildCfg("break2 = 1\nreturn値 = 3\nafter()", "block");
+    expect(edgesOf(cfg)).toEqual([
+      "Start --> break2 = 1; return値 = 3; after()",
+      "break2 = 1; return値 = 3; after() --> End",
+    ]);
+  });
+
+  it("keeps lines after an indented first line and reports the indent", () => {
+    const { cfg, diagnostics } = buildCfg("    x = 1\ny = 2", "block");
+    expect(edgesOf(cfg)).toEqual(["Start --> x = 1; y = 2", "x = 1; y = 2 --> End"]);
+    expect(diagnostics).toEqual([{ line: 1, message: "Unexpected indent", severity: "error" }]);
+  });
+
+  it("does not parse the inside of a triple-quoted string as code", () => {
+    const src = ['text = """hello', "if fake:", "    phantom()", '"""', "after()"].join("\n");
+    const { cfg } = buildCfg(src, "statement");
+    expect(cfg.nodes.map((n) => n.kind)).toEqual(["start", "block", "block", "end"]);
+    expect(cfg.nodes[1]?.endLine).toBe(4);
+  });
+
+  it("covers every line of a multi-line return", () => {
+    const { cfg } = buildCfg("def f():\n    return (\n        1 +\n        2\n    )", "block");
+    const ret = cfg.nodes.find((n) => n.kind === "block");
+    expect(ret).toMatchObject({ line: 2, endLine: 5 });
+  });
+
+  it("labels the exit taken by raise", () => {
+    const { cfg } = buildCfg("if bad:\n    raise ValueError()\nok()", "block");
+    expect(edgesOf(cfg)).toContain("raise ValueError() -raise-> End");
+  });
+
+  it("covers every line of a multi-line header", () => {
+    const { cfg } = buildCfg("def f(a,\n      b):\n    if (a and\n            b):\n        g()", "block");
+    expect(cfg.nodes.find((n) => n.kind === "start")).toMatchObject({ line: 1, endLine: 2 });
+    expect(cfg.nodes.find((n) => n.kind === "branch")).toMatchObject({ line: 3, endLine: 4 });
+  });
+
+  it("warns about code no path reaches", () => {
+    const { diagnostics } = buildCfg("def f(x):\n    return 1\n    dead()", "block");
+    expect(diagnostics).toEqual([{ line: 3, message: "Unreachable code", severity: "warning" }]);
+  });
+
+  it("shows except as a branch that may be taken, warning that try is approximate", () => {
+    const src = "try:\n    a()\nexcept E:\n    return None\nwith f() as g:\n    c()";
+    const { cfg, diagnostics } = buildCfg(src, "block");
+    expect(edgesOf(cfg)).toEqual([
+      "Start --> try:; a()",
+      "try:; a() --> except E",
+      "except E -True-> return None",
+      "return None --> End",
+      "except E -False-> with f() as g:; c()",
+      "with f() as g:; c() --> End",
+    ]);
+    expect(diagnostics.map((d) => [d.line, d.severity])).toEqual([[1, "warning"]]);
+  });
+
+  it("ignores decorators", () => {
+    const { cfg } = buildCfg("@cache\ndef f():\n    return 1", "block");
+    expect(cfg.nodes.map((n) => n.label)).toEqual(["def f()", "return 1", "return"]);
+  });
+
+  it("finds the header colon after a triple-quoted string", () => {
+    const { cfg, diagnostics } = buildCfg('if x == """a"b""":\n    y = 1', "block");
+    expect(cfg.nodes.map((n) => n.kind)).toContain("branch");
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("parses very long inputs", () => {
+    const src = Array.from({ length: 120_000 }, (_, i) => `x${i} = ${i}`).join("\n");
+    expect(buildCfg(src, "block").cfg.nodes).toHaveLength(3);
+  });
+
+  it("keeps code after an unclosed triple quote", () => {
+    const { cfg, diagnostics } = buildCfg('x = """never closed\ny = 1\nif a:\n    b()', "statement");
+    expect(cfg.nodes.map((n) => n.label)).toEqual([
+      "Start",
+      'x = """never closed',
+      "y = 1",
+      "if a",
+      "b()",
+      "End",
+    ]);
+    expect(diagnostics).toEqual([
+      { line: 1, message: "Unterminated triple-quoted string", severity: "error" },
+    ]);
   });
 });

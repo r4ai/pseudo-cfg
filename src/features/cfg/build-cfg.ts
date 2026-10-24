@@ -18,6 +18,8 @@ export type CfgEdge = {
   label: string | null;
   /** True for edges that jump back to a loop header. */
   back: boolean;
+  /** True for `break`, `return` and `raise`, which leave the structure they are in. */
+  jump: boolean;
 };
 
 export type Cfg = { nodes: CfgNode[]; edges: CfgEdge[] };
@@ -27,7 +29,7 @@ export type Granularity = "block" | "statement";
 export type BuildResult = { cfg: Cfg; diagnostics: Diagnostic[] };
 
 /** A dangling control-flow exit waiting to be connected to the next node. */
-type Port = { from: string; label: string | null };
+type Port = { from: string; label: string | null; jump?: boolean };
 
 type Loop = { head: string; breaks: Port[] };
 
@@ -43,7 +45,11 @@ export function buildCfg(source: string, granularity: Granularity): BuildResult 
   if (hasDefs) builder.collectDefs(program.body);
   else builder.scope("Start", "End", 1, program.body);
   builder.flushDefs();
-  return { cfg: { nodes: builder.nodes, edges: builder.edges }, diagnostics: program.diagnostics };
+  builder.reportUnreachable();
+  return {
+    cfg: { nodes: builder.nodes, edges: builder.edges },
+    diagnostics: program.diagnostics.toSorted((a, b) => a.line - b.line),
+  };
 }
 
 class Builder {
@@ -58,8 +64,8 @@ class Builder {
     private readonly diagnostics: Diagnostic[],
   ) {}
 
-  scope(startLabel: string, endLabel: string, line: number, body: Stmt[]) {
-    const start = this.add("start", startLabel, line);
+  scope(startLabel: string, endLabel: string, line: number, body: Stmt[], headerEnd = line) {
+    const start = this.add("start", startLabel, line, headerEnd);
     const outer = this.exit;
     this.exit = `n${this.nextId++}`;
     const end: CfgNode = { id: this.exit, kind: "end", label: endLabel, line, endLine: line };
@@ -76,7 +82,19 @@ class Builder {
 
   flushDefs() {
     for (let def = this.pendingDefs.shift(); def; def = this.pendingDefs.shift()) {
-      this.scope(`def ${def.signature}`, "return", def.line, def.body);
+      this.scope(`def ${def.signature}`, "return", def.line, def.body, def.endLine);
+    }
+  }
+
+  /** Warns about statements no path from their scope's start reaches, such as code after `return`. */
+  reportUnreachable() {
+    const reached = new Set(this.nodes.filter((n) => n.kind === "start").map((n) => n.id));
+    for (const id of reached) {
+      for (const edge of this.edges) if (edge.source === id) reached.add(edge.target);
+    }
+    for (const node of this.nodes) {
+      if (node.kind === "end" || reached.has(node.id)) continue;
+      this.diagnostics.push({ line: node.line, message: "Unreachable code", severity: "warning" });
     }
   }
 
@@ -87,16 +105,17 @@ class Builder {
 
     for (const stmt of stmts) {
       if (stmt.type === "simple" || stmt.type === "return") {
-        const text = stmt.text;
-        const endLine = stmt.type === "simple" ? stmt.endLine : stmt.line;
-        if (open !== null && this.granularity === "block") this.append(open, text, endLine);
+        if (open !== null && this.granularity === "block") this.append(open, stmt.text, stmt.endLine);
         else {
-          open = this.add("block", text, stmt.line, endLine);
+          open = this.add("block", stmt.text, stmt.line, stmt.endLine);
           this.connect(ports, open);
         }
-        ports = [{ from: open, label: null }];
+        ports = [{ from: open, label: stmt.type === "return" && stmt.raises ? "raise" : null }];
         if (stmt.type === "return") {
-          this.connect(ports, this.exit);
+          this.connect(
+            ports.map((port) => ({ ...port, jump: true })),
+            this.exit,
+          );
           ports = [];
           open = null;
         }
@@ -117,17 +136,17 @@ class Builder {
       case "if":
         return this.ifChain(stmt.branches, ports, loop);
       case "while":
-        return this.loop("branch", `while ${stmt.cond}`, stmt.line, ports, stmt.body, stmt.orelse, loop, {
+        return this.loop("branch", `while ${stmt.cond}`, stmt, ports, stmt.body, stmt.orelse, loop, {
           enter: "True",
           leave: stmt.cond === "True" ? null : "False",
         });
       case "for":
-        return this.loop("loop", `for ${stmt.head}`, stmt.line, ports, stmt.body, stmt.orelse, loop, {
+        return this.loop("loop", `for ${stmt.head}`, stmt, ports, stmt.body, stmt.orelse, loop, {
           enter: "next",
           leave: "done",
         });
       case "break":
-        if (loop) loop.breaks.push(...ports);
+        if (loop) loop.breaks.push(...ports.map((port) => ({ ...port, jump: true })));
         else this.report(stmt.line, "'break' outside loop");
         return loop ? [] : ports;
       case "continue":
@@ -150,7 +169,8 @@ class Builder {
     if (!first) return ports;
     if (first.cond === null) return this.sequence(first.body, ports, loop);
 
-    const cond = this.add("branch", `${keyword} ${first.cond}`, first.line);
+    const label = `${first.keyword ?? keyword} ${first.cond}`.trimEnd();
+    const cond = this.add("branch", label, first.line, first.endLine);
     this.connect(ports, cond);
     const thenPorts = this.sequence(first.body, [{ from: cond, label: "True" }], loop);
     const elsePorts = this.ifChain(rest, [{ from: cond, label: "False" }], loop, "elif");
@@ -160,14 +180,14 @@ class Builder {
   private loop(
     kind: "branch" | "loop",
     label: string,
-    line: number,
+    at: { line: number; endLine: number },
     ports: Port[],
     body: Stmt[],
     orelse: Stmt[],
     outer: Loop | null,
     labels: { enter: string; leave: string | null },
   ): Port[] {
-    const head = this.add(kind, label, line);
+    const head = this.add(kind, label, at.line, at.endLine);
     this.connect(ports, head);
     const inner: Loop = { head, breaks: [] };
     const bodyPorts = this.sequence(body, [{ from: head, label: labels.enter }], inner);
@@ -191,10 +211,12 @@ class Builder {
   }
 
   private connect(ports: Port[], target: string, back = false) {
-    for (const port of ports) this.edges.push({ source: port.from, target, label: port.label, back });
+    for (const port of ports) {
+      this.edges.push({ source: port.from, target, label: port.label, back, jump: port.jump ?? false });
+    }
   }
 
   private report(line: number, message: string) {
-    this.diagnostics.push({ line, message });
+    this.diagnostics.push({ line, message, severity: "error" });
   }
 }

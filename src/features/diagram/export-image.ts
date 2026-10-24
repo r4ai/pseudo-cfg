@@ -1,7 +1,7 @@
 import type { Cfg } from "@/features/cfg/build-cfg";
-import { arrowhead, roundedPath } from "./edge-route";
+import { arrowhead, labelWidth, roundedPath, toneOf } from "./edge-route";
 import { nodeBoxes, routeEdges } from "./geometry";
-import type { Positions } from "./layout";
+import { displayLines, type Positions } from "./layout";
 import { shapeOf } from "./shapes";
 
 const PADDING = 24;
@@ -12,9 +12,13 @@ const FONT = "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospac
 const COLORS = {
   background: "#ffffff",
   text: "#171717",
-  muted: "#737373",
   stroke: "#7a7a7a",
   edge: "#5c5c5c",
+  label: {
+    yes: { text: "#1d7a46", fill: "#ecf7f0", stroke: "#a8d9bb" },
+    no: { text: "#b4441f", fill: "#fdf0eb", stroke: "#f0b9a5" },
+    plain: { text: "#737373", fill: "#ffffff", stroke: "#e5e5e5" },
+  },
   fill: { start: "#f2f2f2", end: "#f2f2f2", block: "#ffffff", branch: "#fdf6e3", loop: "#eef4fd" },
 } as const;
 
@@ -24,32 +28,47 @@ const COLORS = {
  */
 export function diagramToSvg(cfg: Cfg, positions: Positions): string {
   const boxes = nodeBoxes(cfg, positions);
-  const all = [...boxes.values()];
+  const routed = routeEdges(cfg, boxes);
+  // Back edges run outside the nodes, so the bounds include every edge point and label.
+  const all = [
+    ...boxes.values(),
+    ...routed.flatMap(({ geometry }) => [
+      ...geometry.points.map((p) => ({ ...p, width: 0, height: 0 })),
+      { x: geometry.labelAt.x - 24, y: geometry.labelAt.y - 8, width: 48, height: 16 },
+    ]),
+  ];
   const minX = Math.min(...all.map((b) => b.x)) - PADDING;
   const minY = Math.min(...all.map((b) => b.y)) - PADDING;
   const width = Math.max(...all.map((b) => b.x + b.width)) + PADDING - minX;
   const height = Math.max(...all.map((b) => b.y + b.height)) + PADDING - minY;
 
-  const edges = routeEdges(cfg, boxes).map(({ geometry, label }) => {
+  const edges = routed.map(({ geometry, back }) => {
     const { line, head } = arrowhead(geometry.points);
+    const dash = back ? ` stroke-dasharray="5 4"` : "";
+    return `<path d="${roundedPath(line, 8, geometry.hops)}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"${dash}/><polygon points="${head}" fill="${COLORS.edge}"/>`;
+  });
+  // Labels go on top of every edge, as they do on screen.
+  const labels = routed.flatMap(({ geometry, label }) => {
+    if (!label) return [];
     const { x, y } = geometry.labelAt;
-    const text = label
-      ? `<rect x="${x - label.length * 3.5 - 4}" y="${y - 8}" width="${label.length * 7 + 8}" height="16" rx="4" fill="${COLORS.background}"/>` +
-        `<text x="${x}" y="${y}" fill="${COLORS.muted}" font-size="11" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`
-      : "";
-    return `<path d="${roundedPath(line)}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"/><polygon points="${head}" fill="${COLORS.edge}"/>${text}`;
+    const color = COLORS.label[toneOf(label)];
+    const pill = labelWidth(label);
+    return [
+      `<rect x="${x - pill / 2}" y="${y - 8}" width="${pill}" height="16" rx="8" fill="${color.fill}" stroke="${color.stroke}"/>` +
+        `<text x="${x}" y="${y}" fill="${color.text}" font-size="11" font-weight="500" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`,
+    ];
   });
 
   const nodes = cfg.nodes.map((node) => {
     const box = boxes.get(node.id);
     if (!box) return "";
-    const shape = shapeOf(node.kind, box.width, box.height);
+    const lines = displayLines(node.label);
+    const shape = shapeOf(node.kind, box.width, box.height, lines.length > 1);
     const paint = `fill="${COLORS.fill[node.kind]}" stroke="${COLORS.stroke}" stroke-width="1.25"`;
     const outline =
       shape.type === "rect"
         ? `<rect width="${box.width}" height="${box.height}" rx="${shape.rx}" ${paint}/>`
         : `<polygon points="${shape.points}" ${paint}/>`;
-    const lines = node.label.split("\n");
     const tspans = lines
       .map(
         (line, i) =>
@@ -65,24 +84,37 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
     `<rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="${COLORS.background}"/>`,
     ...edges,
     ...nodes,
+    ...labels,
     "</svg>",
   ].join("");
 }
 
-/** Rasterises an SVG document at twice its size for crisp pasting. */
+/**
+ * Rasterises an SVG document at twice its size for crisp pasting, scaling down
+ * for diagrams too large for a canvas.
+ */
 export async function svgToPng(svg: string): Promise<Blob> {
   const image = new Image();
   image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   await image.decode();
   const canvas = document.createElement("canvas");
-  canvas.width = image.naturalWidth * PIXEL_RATIO;
-  canvas.height = image.naturalHeight * PIXEL_RATIO;
+  const ratio = pixelRatio(image.naturalWidth, image.naturalHeight);
+  canvas.width = Math.round(image.naturalWidth * ratio);
+  canvas.height = Math.round(image.naturalHeight * ratio);
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas is not available");
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return new Promise((resolve, reject) =>
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Could not encode PNG"))), "image/png"),
   );
+}
+
+/** Browsers refuse canvases beyond about 16k pixels a side or 268M pixels in total. */
+const MAX_SIDE = 16_384;
+const MAX_AREA = 100_000_000;
+
+export function pixelRatio(width: number, height: number): number {
+  return Math.min(PIXEL_RATIO, MAX_SIDE / width, MAX_SIDE / height, Math.sqrt(MAX_AREA / (width * height)));
 }
 
 /** Writes a PNG to the clipboard. The blob is passed as a promise so Safari keeps the user gesture. */

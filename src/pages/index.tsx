@@ -5,8 +5,8 @@ export default async function HomePage() {
     <div className="flex h-svh flex-col">
       <title>Pseudo CFG — pseudocode to control-flow graph</title>
       <header className="flex h-11 shrink-0 items-center gap-3 border-b px-4">
-        <h1 className="text-sm font-semibold">Pseudo CFG</h1>
-        <p className="truncate text-sm text-muted-foreground">
+        <h1 className="text-sm font-semibold whitespace-nowrap">Pseudo CFG</h1>
+        <p className="truncate text-sm text-muted-foreground max-sm:hidden">
           Write pseudocode on the left, arrange the graph on the right.
         </p>
       </header>

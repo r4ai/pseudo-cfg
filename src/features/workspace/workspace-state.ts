@@ -1,7 +1,7 @@
 import { buildCfg, type Cfg, type Granularity } from "@/features/cfg/build-cfg";
 import type { Diagnostic } from "@/features/cfg/parse";
 import { reconcile } from "@/features/cfg/reconcile";
-import { autoLayout, placeIncrementally, type Positions } from "@/features/diagram/layout";
+import { autoLayout, mostlyReplaced, placeIncrementally, type Positions } from "@/features/diagram/layout";
 
 export type WorkspaceState = {
   source: string;
@@ -10,9 +10,14 @@ export type WorkspaceState = {
   diagnostics: Diagnostic[];
   positions: Positions;
   /** Layout history for undo/redo in the diagram; the editor keeps its own text history. */
-  undo: Positions[];
-  redo: Positions[];
+  undo: LayoutSnapshot[];
+  redo: LayoutSnapshot[];
+  /** Bumped whenever the whole layout is replaced, so the view can fit the new graph. */
+  layoutEpoch: number;
 };
+
+/** A diagram arrangement. The graph is kept so a granularity switch can be undone with its ids. */
+type LayoutSnapshot = Pick<WorkspaceState, "granularity" | "cfg" | "positions">;
 
 /** What is persisted between visits. Ids in `cfg` let saved positions survive a reload. */
 export type SavedWorkspace = Pick<WorkspaceState, "source" | "granularity" | "cfg" | "positions">;
@@ -31,7 +36,11 @@ const HISTORY_LIMIT = 100;
 const createId = () => crypto.randomUUID().slice(0, 8);
 
 export function initWorkspace(saved: SavedWorkspace): WorkspaceState {
-  return rebuild({ ...saved, diagnostics: [], undo: [], redo: [] }, saved.source, saved.granularity);
+  return rebuild(
+    { ...saved, diagnostics: [], undo: [], redo: [], layoutEpoch: 0 },
+    saved.source,
+    saved.granularity,
+  );
 }
 
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
@@ -41,14 +50,14 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case "setGranularity": {
       // The node structure changes wholesale, so a fresh layout reads better than an incremental one.
       const next = rebuild(withCheckpoint(state), state.source, action.granularity);
-      return { ...next, positions: autoLayout(next.cfg) };
+      return relaid(next);
     }
     case "move":
       return { ...state, positions: { ...state.positions, ...action.positions } };
     case "checkpoint":
       return withCheckpoint(state);
     case "tidy":
-      return { ...withCheckpoint(state), positions: autoLayout(state.cfg) };
+      return relaid(withCheckpoint(state));
     case "undo":
       return travel(state, "undo", "redo");
     case "redo":
@@ -60,22 +69,37 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 function rebuild(state: WorkspaceState, source: string, granularity: Granularity): WorkspaceState {
   const built = buildCfg(source, granularity);
   const cfg = reconcile(state.cfg, built.cfg, createId);
-  const positions = placeIncrementally(state.cfg, state.positions, cfg);
-  return { ...state, source, granularity, cfg, diagnostics: built.diagnostics, positions };
+  const next = { ...state, source, granularity, cfg, diagnostics: built.diagnostics };
+  // Laying out afresh discards manual positions, so it can be undone from the diagram.
+  if (mostlyReplaced(state.cfg, state.positions, cfg)) return relaid(withCheckpoint(next));
+  return { ...next, positions: placeIncrementally(state.cfg, state.positions, cfg) };
 }
 
+function relaid(state: WorkspaceState): WorkspaceState {
+  return { ...state, positions: autoLayout(state.cfg), layoutEpoch: state.layoutEpoch + 1 };
+}
+
+const snapshotOf = ({ granularity, cfg, positions }: WorkspaceState): LayoutSnapshot => ({
+  granularity,
+  cfg,
+  positions,
+});
+
 function withCheckpoint(state: WorkspaceState): WorkspaceState {
-  return { ...state, undo: [...state.undo, state.positions].slice(-HISTORY_LIMIT), redo: [] };
+  return { ...state, undo: [...state.undo, snapshotOf(state)].slice(-HISTORY_LIMIT), redo: [] };
 }
 
 function travel(state: WorkspaceState, from: "undo" | "redo", to: "undo" | "redo"): WorkspaceState {
   const snapshot = state[from].at(-1);
   if (!snapshot) return state;
-  return {
-    ...state,
-    [from]: state[from].slice(0, -1),
-    [to]: [...state[to], state.positions],
-    // Nodes added after the snapshot keep their current place.
-    positions: { ...state.positions, ...snapshot },
-  };
+  const moved = { ...state, [from]: state[from].slice(0, -1), [to]: [...state[to], snapshotOf(state)] };
+  if (snapshot.granularity !== state.granularity) {
+    // Rebuild against the snapshot's graph so its ids, and so its positions, carry over.
+    const restored = { ...moved, cfg: snapshot.cfg, positions: snapshot.positions };
+    // The graph changes wholesale, so the view fits it as after a switch.
+    const rebuilt = rebuild(restored, state.source, snapshot.granularity);
+    return { ...rebuilt, layoutEpoch: Math.max(rebuilt.layoutEpoch, state.layoutEpoch + 1) };
+  }
+  // Nodes added after the snapshot keep their current place.
+  return { ...moved, positions: { ...state.positions, ...snapshot.positions } };
 }

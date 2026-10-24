@@ -28,27 +28,46 @@ export function reconcile(prev: Cfg, next: Cfg, createId: () => string): Cfg {
 
 const signature = (node: CfgNode) => `${node.kind}\u0000${node.label}`;
 
-/** Maps indices of `b` to indices of `a` along their longest common subsequence. */
+/**
+ * Maps indices of `b` to indices of `a` along their longest common subsequence.
+ * An edit usually touches a few nodes, so the common prefix and suffix are matched
+ * directly and the quadratic table only covers the part in between.
+ */
 function alignByLabel(a: CfgNode[], b: CfgNode[]): Map<number, number> {
-  const rows = a.length + 1;
-  const cols = b.length + 1;
+  const sa = a.map(signature);
+  const sb = b.map(signature);
+  const matches = new Map<number, number>();
+
+  let start = 0;
+  while (start < sa.length && start < sb.length && sa[start] === sb[start]) {
+    matches.set(start, start);
+    start++;
+  }
+  let endA = sa.length;
+  let endB = sb.length;
+  while (endA > start && endB > start && sa[endA - 1] === sb[endB - 1]) {
+    endA--;
+    endB--;
+    matches.set(endB, endA);
+  }
+
+  const rows = endA - start + 1;
+  const cols = endB - start + 1;
   const table = new Uint32Array(rows * cols);
-  for (let i = a.length - 1; i >= 0; i--) {
-    for (let j = b.length - 1; j >= 0; j--) {
-      table[i * cols + j] =
-        signature(a[i] as CfgNode) === signature(b[j] as CfgNode)
-          ? (table[(i + 1) * cols + j + 1] ?? 0) + 1
-          : Math.max(table[(i + 1) * cols + j] ?? 0, table[i * cols + j + 1] ?? 0);
+  const at = (i: number, j: number) => table[(i - start) * cols + (j - start)] ?? 0;
+  for (let i = endA - 1; i >= start; i--) {
+    for (let j = endB - 1; j >= start; j--) {
+      table[(i - start) * cols + (j - start)] =
+        sa[i] === sb[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
     }
   }
 
-  const matches = new Map<number, number>();
-  let i = 0;
-  let j = 0;
-  while (i < a.length && j < b.length) {
-    if (signature(a[i] as CfgNode) === signature(b[j] as CfgNode)) {
+  let i = start;
+  let j = start;
+  while (i < endA && j < endB) {
+    if (sa[i] === sb[j]) {
       matches.set(j++, i++);
-    } else if ((table[(i + 1) * cols + j] ?? 0) >= (table[i * cols + j + 1] ?? 0)) {
+    } else if (at(i + 1, j) >= at(i, j + 1)) {
       i++;
     } else {
       j++;

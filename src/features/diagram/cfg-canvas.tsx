@@ -11,20 +11,30 @@ import {
   Panel,
   ReactFlow,
   SelectionMode,
+  useReactFlow,
 } from "@xyflow/react";
-import { type KeyboardEvent, type ReactNode, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import type { Cfg, CfgNode as CfgNodeModel } from "@/features/cfg/build-cfg";
+import type { Diagnostic } from "@/features/cfg/parse";
 import { CfgEdge, type CfgFlowEdge } from "./cfg-edge";
 import { CfgNode, type CfgFlowNode } from "./cfg-node";
 import { nodeBoxes, routeEdges } from "./geometry";
 import { nodeSize, type Positions } from "./layout";
 
 const nodeTypes = { cfg: CfgNode };
+/** Enough margin that edges running round the graph and the zoom controls stay clear. */
+const FIT_VIEW_OPTIONS = { padding: "48px", maxZoom: 1 } as const;
+/** Arrow key presses closer together than this (ms) are undone together. */
+const KEYBOARD_MOVE_GAP = 1000;
 const edgeTypes = { cfg: CfgEdge };
 
 type CfgCanvasProps = {
   cfg: Cfg;
   positions: Positions;
+  /** Changes when the layout is replaced wholesale; the view then fits the new graph. */
+  layoutEpoch: number;
+  /** Nodes built from a line with a problem are marked. */
+  diagnostics: Diagnostic[];
   /** Editor cursor line; nodes covering it are highlighted. */
   activeLine: number | null;
   onMove: (positions: Positions) => void;
@@ -34,7 +44,7 @@ type CfgCanvasProps = {
   onRedo: () => void;
   onSelectNode: (node: CfgNodeModel | null) => void;
   onOpenNode: (node: CfgNodeModel) => void;
-  /** Floating toolbar shown in the top-right corner. */
+  /** Toolbar shown in the bar above the canvas. */
   children?: ReactNode;
 };
 
@@ -42,6 +52,8 @@ type CfgCanvasProps = {
 export function CfgCanvas({
   cfg,
   positions,
+  layoutEpoch,
+  diagnostics,
   activeLine,
   onMove,
   onCheckpoint,
@@ -52,26 +64,68 @@ export function CfgCanvas({
   children,
 }: CfgCanvasProps) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const { fitView } = useReactFlow();
+  const fittedEpoch = useRef(layoutEpoch);
 
-  const nodes: CfgFlowNode[] = cfg.nodes.map((node) => ({
-    id: node.id,
-    type: "cfg",
-    position: positions[node.id] ?? { x: 0, y: 0 },
-    ...nodeSize(node),
-    selected: selected.has(node.id),
-    data: { node, active: activeLine !== null && node.line <= activeLine && activeLine <= node.endLine },
-  }));
+  useEffect(() => {
+    if (fittedEpoch.current === layoutEpoch) return;
+    fittedEpoch.current = layoutEpoch;
+    // Wait a frame so React Flow has measured the new nodes.
+    const frame = requestAnimationFrame(() => void fitView({ ...FIT_VIEW_OPTIONS, duration: 200 }));
+    return () => cancelAnimationFrame(frame);
+  }, [layoutEpoch, fitView]);
+
+  const nodes: CfgFlowNode[] = cfg.nodes.map((node) => {
+    // Start and end nodes stand for the whole scope, not the line they point at.
+    const terminal = node.kind === "start" || node.kind === "end";
+    return {
+      id: node.id,
+      type: "cfg",
+      position: positions[node.id] ?? { x: 0, y: 0 },
+      ...nodeSize(node),
+      selected: selected.has(node.id),
+      data: {
+        node,
+        active: !terminal && covers(node, activeLine),
+        problems: terminal ? [] : diagnostics.filter((d) => covers(node, d.line)),
+      },
+    };
+  });
   const edges: CfgFlowEdge[] = routeEdges(cfg, nodeBoxes(cfg, positions)).map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
     type: "cfg",
-    data: { label: edge.label, geometry: edge.geometry },
+    data: {
+      label: edge.label,
+      back: edge.back,
+      geometry: edge.geometry,
+      highlighted: selected.has(edge.source) || selected.has(edge.target),
+    },
   }));
+  const empty = cfg.nodes.every((node) => node.kind === "start" || node.kind === "end");
+
+  const dragging = useRef(false);
+  const lastKeyboardMove = useRef(0);
+
+  const startDrag = () => {
+    dragging.current = true;
+    onCheckpoint();
+  };
+  const stopDrag = () => {
+    dragging.current = false;
+  };
 
   const onNodesChange: OnNodesChange<CfgFlowNode> = (changes) => {
     const moved = movedPositions(changes);
-    if (Object.keys(moved).length > 0) onMove(moved);
+    if (Object.keys(moved).length > 0) {
+      // Moves outside a drag come from the arrow keys; a burst of them is one undo step.
+      if (!dragging.current) {
+        if (Date.now() - lastKeyboardMove.current > KEYBOARD_MOVE_GAP) onCheckpoint();
+        lastKeyboardMove.current = Date.now();
+      }
+      onMove(moved);
+    }
     const nextSelected = applySelection(selected, changes);
     if (nextSelected === selected) return;
     setSelected(nextSelected);
@@ -87,6 +141,16 @@ export function CfgCanvas({
 
   const onKeyDown = (event: KeyboardEvent) => {
     const mod = event.metaKey || event.ctrlKey;
+    if (event.key === "Enter" && !mod) {
+      // Enter on a focused node jumps to its code, like a double-click.
+      const id = (event.target as Element).closest(".react-flow__node")?.getAttribute("data-id");
+      const node = cfg.nodes.find((n) => n.id === id);
+      if (node) {
+        onOpenNode(node);
+        event.preventDefault();
+      }
+      return;
+    }
     if (!mod) return;
     const key = event.key.toLowerCase();
     if ((key === "z" && event.shiftKey) || key === "y") onRedo();
@@ -97,47 +161,65 @@ export function CfgCanvas({
   };
 
   return (
-    // Takes focus on click so canvas shortcuts don't fire while typing in the editor.
-    // `application` is the ARIA role for widgets with their own keyboard model; jsx-a11y does not list it.
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-    <div
-      role="application"
-      aria-label="Control-flow graph canvas"
-      className="cfg-canvas size-full outline-none"
-      tabIndex={-1}
-      onKeyDown={onKeyDown}
-    >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodesChange={onNodesChange}
-        onNodeDragStart={onCheckpoint}
-        onNodeDoubleClick={(_, node) => onOpenNode(node.data.node)}
-        colorMode="system"
-        nodesConnectable={false}
-        edgesFocusable={false}
-        deleteKeyCode={null}
-        selectionOnDrag
-        selectionMode={SelectionMode.Partial}
-        panOnDrag={[1, 2]}
-        panOnScroll
-        snapToGrid
-        snapGrid={[4, 4]}
-        fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-        minZoom={0.1}
+    <div className="flex size-full flex-col">
+      {/* The toolbar has its own bar so it never covers the graph, however small the canvas. */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b pr-1.5 pl-3">
+        <h2 className="mr-auto text-xs font-medium text-muted-foreground max-sm:sr-only">Control flow</h2>
+        {children}
+      </div>
+      {/* Takes focus on click so canvas shortcuts don't fire while typing in the editor.
+          `application` is the ARIA role for widgets with their own keyboard model; jsx-a11y does not list it. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+      <div
+        role="application"
+        aria-label="Control-flow graph canvas"
+        className="cfg-canvas min-h-0 flex-1 outline-none"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-        <Controls showInteractive={false} position="bottom-left" />
-        <Panel position="top-right">{children}</Panel>
-        <Panel position="bottom-center" className="pointer-events-none text-xs text-muted-foreground">
-          Drag to select · Scroll to pan · ⌘/Ctrl + scroll to zoom · Double-click a node to jump to its code
-        </Panel>
-      </ReactFlow>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onNodeDragStart={startDrag}
+          onNodeDragStop={stopDrag}
+          onSelectionDragStart={startDrag}
+          onSelectionDragStop={stopDrag}
+          onNodeDoubleClick={(_, node) => onOpenNode(node.data.node)}
+          colorMode="system"
+          nodesConnectable={false}
+          edgesFocusable={false}
+          deleteKeyCode={null}
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
+          panOnDrag={[1, 2]}
+          panOnScroll
+          snapToGrid
+          snapGrid={[4, 4]}
+          fitView
+          fitViewOptions={FIT_VIEW_OPTIONS}
+          minZoom={0.1}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+          <Controls showInteractive={false} position="bottom-left" fitViewOptions={FIT_VIEW_OPTIONS} />
+          {empty && (
+            <Panel
+              position="top-center"
+              className="pointer-events-none !top-1/3 text-center text-sm text-muted-foreground"
+            >
+              Type pseudocode on the left to see its control flow here.
+            </Panel>
+          )}
+        </ReactFlow>
+      </div>
     </div>
   );
+}
+
+function covers(node: CfgNodeModel, line: number | null): boolean {
+  return line !== null && node.line <= line && line <= node.endLine;
 }
 
 function movedPositions(changes: NodeChange<CfgFlowNode>[]): Positions {
