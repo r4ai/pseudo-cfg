@@ -113,4 +113,17 @@ describe("buildCfg", () => {
     expect(edgesOf(cfg)).toEqual(["Start --> x = 1; y = 2", "x = 1; y = 2 --> End"]);
     expect(diagnostics).toEqual([{ line: 1, message: "Unexpected indent" }]);
   });
+
+  it("does not parse the inside of a triple-quoted string as code", () => {
+    const src = ['text = """hello', "if fake:", "    phantom()", '"""', "after()"].join("\n");
+    const { cfg } = buildCfg(src, "statement");
+    expect(cfg.nodes.map((n) => n.kind)).toEqual(["start", "block", "block", "end"]);
+    expect(cfg.nodes[1]?.endLine).toBe(4);
+  });
+
+  it("covers every line of a multi-line return", () => {
+    const { cfg } = buildCfg("def f():\n    return (\n        1 +\n        2\n    )", "block");
+    const ret = cfg.nodes.find((n) => n.kind === "block");
+    expect(ret).toMatchObject({ line: 2, endLine: 5 });
+  });
 });

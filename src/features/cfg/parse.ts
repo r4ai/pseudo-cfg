@@ -9,7 +9,7 @@ export type Diagnostic = { line: number; message: string };
 
 export type Stmt =
   | { type: "simple"; text: string; line: number; endLine: number }
-  | { type: "return"; text: string; line: number }
+  | { type: "return"; text: string; line: number; endLine: number }
   | { type: "break" | "continue"; line: number }
   | { type: "if"; branches: IfBranch[] }
   | { type: "while"; cond: string; line: number; body: Stmt[]; orelse: Stmt[] }
@@ -43,18 +43,23 @@ function toLogicalLines(source: string): Line[] {
   const physical = source.split(/\r?\n/);
   let pending: Line | null = null;
   let depth = 0;
+  let quote: string | null = null;
 
   physical.forEach((raw, index) => {
-    const { code, depthDelta } = scanLine(raw);
+    const startsInString = quote !== null;
+    const scanned = scanLine(raw, quote);
+    const { code, depthDelta } = scanned;
+    quote = scanned.quote;
     const lineNo = index + 1;
     if (pending) {
-      pending.text = `${pending.text} ${code.trim()}`.trim();
+      // Lines inside a multi-line string keep their text; others are joined with a space.
+      pending.text = startsInString ? `${pending.text}\n${code}` : `${pending.text} ${code.trim()}`.trim();
       pending.endLine = lineNo;
     } else if (code.trim() !== "") {
       pending = { text: code.trim(), indent: indentWidth(raw), line: lineNo, endLine: lineNo };
     }
     depth = Math.max(0, depth + depthDelta);
-    const continues = depth > 0 || code.trimEnd().endsWith("\\");
+    const continues = quote !== null || depth > 0 || code.trimEnd().endsWith("\\");
     if (pending && !continues) {
       pending.text = pending.text.replace(/\\$/, "").trimEnd();
       result.push(pending);
@@ -67,26 +72,38 @@ function toLogicalLines(source: string): Line[] {
   return result;
 }
 
-/** Removes a trailing comment and reports the net bracket depth change, ignoring string contents. */
-function scanLine(raw: string): { code: string; depthDelta: number } {
-  let quote: string | null = null;
+/**
+ * Removes a trailing comment and reports the net bracket depth change, ignoring string contents.
+ *
+ * @param quote - The string delimiter open at the start of the line (only triple quotes span lines).
+ * @returns The delimiter still open at the end of the line, if any.
+ */
+function scanLine(
+  raw: string,
+  quote: string | null,
+): { code: string; depthDelta: number; quote: string | null } {
   let depthDelta = 0;
   for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i];
+    const ch = raw[i] as string;
     if (quote) {
       if (ch === "\\") i++;
-      else if (ch === quote) quote = null;
+      else if (raw.startsWith(quote, i)) {
+        i += quote.length - 1;
+        quote = null;
+      }
     } else if (ch === '"' || ch === "'") {
-      quote = ch;
+      quote = raw.startsWith(ch.repeat(3), i) ? ch.repeat(3) : ch;
+      i += quote.length - 1;
     } else if (ch === "#") {
-      return { code: raw.slice(0, i), depthDelta };
+      return { code: raw.slice(0, i), depthDelta, quote };
     } else if (ch === "(" || ch === "[" || ch === "{") {
       depthDelta++;
     } else if (ch === ")" || ch === "]" || ch === "}") {
       depthDelta--;
     }
   }
-  return { code: raw, depthDelta };
+  // An unterminated single-quoted string ends with its line, as in Python.
+  return { code: raw, depthDelta, quote: quote && quote.length === 3 ? quote : null };
 }
 
 function indentWidth(raw: string): number {
@@ -255,7 +272,7 @@ function simpleStatement(line: Line): Stmt {
     return { type: keyword, line: line.line };
   }
   if (keyword === "return" || keyword === "raise") {
-    return { type: "return", text: line.text, line: line.line };
+    return { type: "return", text: line.text, line: line.line, endLine: line.endLine };
   }
   return { type: "simple", text: line.text, line: line.line, endLine: line.endLine };
 }

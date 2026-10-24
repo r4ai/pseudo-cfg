@@ -87,11 +87,9 @@ class Builder {
 
     for (const stmt of stmts) {
       if (stmt.type === "simple" || stmt.type === "return") {
-        const text = stmt.text;
-        const endLine = stmt.type === "simple" ? stmt.endLine : stmt.line;
-        if (open !== null && this.granularity === "block") this.append(open, text, endLine);
+        if (open !== null && this.granularity === "block") this.append(open, stmt.text, stmt.endLine);
         else {
-          open = this.add("block", text, stmt.line, endLine);
+          open = this.add("block", stmt.text, stmt.line, stmt.endLine);
           this.connect(ports, open);
         }
         ports = [{ from: open, label: null }];
