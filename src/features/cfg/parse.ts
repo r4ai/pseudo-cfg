@@ -12,12 +12,12 @@ export type Stmt =
   | { type: "return"; text: string; line: number; endLine: number; raises: boolean }
   | { type: "break" | "continue"; line: number }
   | { type: "if"; branches: IfBranch[] }
-  | { type: "while"; cond: string; line: number; body: Stmt[]; orelse: Stmt[] }
-  | { type: "for"; head: string; line: number; body: Stmt[]; orelse: Stmt[] }
-  | { type: "def"; signature: string; line: number; body: Stmt[] };
+  | { type: "while"; cond: string; line: number; endLine: number; body: Stmt[]; orelse: Stmt[] }
+  | { type: "for"; head: string; line: number; endLine: number; body: Stmt[]; orelse: Stmt[] }
+  | { type: "def"; signature: string; line: number; endLine: number; body: Stmt[] };
 
 /** `cond` is `null` for the trailing `else` branch. */
-export type IfBranch = { cond: string | null; line: number; body: Stmt[] };
+export type IfBranch = { cond: string | null; line: number; endLine: number; body: Stmt[] };
 
 export type Program = { body: Stmt[]; diagnostics: Diagnostic[] };
 
@@ -190,6 +190,7 @@ class Parser {
           type: "while",
           cond: header.rest,
           line: line.line,
+          endLine: line.endLine,
           body: this.body(line, header),
           orelse: this.elseClause(line.indent),
         };
@@ -198,11 +199,18 @@ class Parser {
           type: "for",
           head: header.rest,
           line: line.line,
+          endLine: line.endLine,
           body: this.body(line, header),
           orelse: this.elseClause(line.indent),
         };
       case "def":
-        return { type: "def", signature: header.rest, line: line.line, body: this.body(line, header) };
+        return {
+          type: "def",
+          signature: header.rest,
+          line: line.line,
+          endLine: line.endLine,
+          body: this.body(line, header),
+        };
       default:
         this.report(line.line, `'${header.keyword}' without a matching 'if'`);
         this.body(line, header);
@@ -211,7 +219,9 @@ class Parser {
   }
 
   private ifStatement(line: Line, header: Header): Stmt {
-    const branches: IfBranch[] = [{ cond: header.rest, line: line.line, body: this.body(line, header) }];
+    const branches: IfBranch[] = [
+      { cond: header.rest, line: line.line, endLine: line.endLine, body: this.body(line, header) },
+    ];
     for (let next = this.peek(); next && next.indent === line.indent; next = this.peek()) {
       const clause = parseHeader(next.text);
       if (clause?.keyword !== "elif" && clause?.keyword !== "else") break;
@@ -219,6 +229,7 @@ class Parser {
       branches.push({
         cond: clause.keyword === "elif" ? clause.rest : null,
         line: next.line,
+        endLine: next.endLine,
         body: this.body(next, clause),
       });
       if (clause.keyword === "else") break;

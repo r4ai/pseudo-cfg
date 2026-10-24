@@ -131,4 +131,10 @@ describe("buildCfg", () => {
     const { cfg } = buildCfg("if bad:\n    raise ValueError()\nok()", "block");
     expect(edgesOf(cfg)).toContain("raise ValueError() -raise-> End");
   });
+
+  it("covers every line of a multi-line header", () => {
+    const { cfg } = buildCfg("def f(a,\n      b):\n    if (a and\n            b):\n        g()", "block");
+    expect(cfg.nodes.find((n) => n.kind === "start")).toMatchObject({ line: 1, endLine: 2 });
+    expect(cfg.nodes.find((n) => n.kind === "branch")).toMatchObject({ line: 3, endLine: 4 });
+  });
 });

@@ -58,8 +58,8 @@ class Builder {
     private readonly diagnostics: Diagnostic[],
   ) {}
 
-  scope(startLabel: string, endLabel: string, line: number, body: Stmt[]) {
-    const start = this.add("start", startLabel, line);
+  scope(startLabel: string, endLabel: string, line: number, body: Stmt[], headerEnd = line) {
+    const start = this.add("start", startLabel, line, headerEnd);
     const outer = this.exit;
     this.exit = `n${this.nextId++}`;
     const end: CfgNode = { id: this.exit, kind: "end", label: endLabel, line, endLine: line };
@@ -76,7 +76,7 @@ class Builder {
 
   flushDefs() {
     for (let def = this.pendingDefs.shift(); def; def = this.pendingDefs.shift()) {
-      this.scope(`def ${def.signature}`, "return", def.line, def.body);
+      this.scope(`def ${def.signature}`, "return", def.line, def.body, def.endLine);
     }
   }
 
@@ -115,12 +115,12 @@ class Builder {
       case "if":
         return this.ifChain(stmt.branches, ports, loop);
       case "while":
-        return this.loop("branch", `while ${stmt.cond}`, stmt.line, ports, stmt.body, stmt.orelse, loop, {
+        return this.loop("branch", `while ${stmt.cond}`, stmt, ports, stmt.body, stmt.orelse, loop, {
           enter: "True",
           leave: stmt.cond === "True" ? null : "False",
         });
       case "for":
-        return this.loop("loop", `for ${stmt.head}`, stmt.line, ports, stmt.body, stmt.orelse, loop, {
+        return this.loop("loop", `for ${stmt.head}`, stmt, ports, stmt.body, stmt.orelse, loop, {
           enter: "next",
           leave: "done",
         });
@@ -148,7 +148,7 @@ class Builder {
     if (!first) return ports;
     if (first.cond === null) return this.sequence(first.body, ports, loop);
 
-    const cond = this.add("branch", `${keyword} ${first.cond}`, first.line);
+    const cond = this.add("branch", `${keyword} ${first.cond}`, first.line, first.endLine);
     this.connect(ports, cond);
     const thenPorts = this.sequence(first.body, [{ from: cond, label: "True" }], loop);
     const elsePorts = this.ifChain(rest, [{ from: cond, label: "False" }], loop, "elif");
@@ -158,14 +158,14 @@ class Builder {
   private loop(
     kind: "branch" | "loop",
     label: string,
-    line: number,
+    at: { line: number; endLine: number },
     ports: Port[],
     body: Stmt[],
     orelse: Stmt[],
     outer: Loop | null,
     labels: { enter: string; leave: string | null },
   ): Port[] {
-    const head = this.add(kind, label, line);
+    const head = this.add(kind, label, at.line, at.endLine);
     this.connect(ports, head);
     const inner: Loop = { head, breaks: [] };
     const bodyPorts = this.sequence(body, [{ from: head, label: labels.enter }], inner);
