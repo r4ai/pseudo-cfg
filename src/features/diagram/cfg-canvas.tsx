@@ -11,8 +11,9 @@ import {
   Panel,
   ReactFlow,
   SelectionMode,
+  useReactFlow,
 } from "@xyflow/react";
-import { type KeyboardEvent, type ReactNode, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import type { Cfg, CfgNode as CfgNodeModel } from "@/features/cfg/build-cfg";
 import { CfgEdge, type CfgFlowEdge } from "./cfg-edge";
 import { CfgNode, type CfgFlowNode } from "./cfg-node";
@@ -20,11 +21,14 @@ import { nodeBoxes, routeEdges } from "./geometry";
 import { nodeSize, type Positions } from "./layout";
 
 const nodeTypes = { cfg: CfgNode };
+const FIT_VIEW_OPTIONS = { padding: 0.2, maxZoom: 1 };
 const edgeTypes = { cfg: CfgEdge };
 
 type CfgCanvasProps = {
   cfg: Cfg;
   positions: Positions;
+  /** Changes when the layout is replaced wholesale; the view then fits the new graph. */
+  layoutEpoch: number;
   /** Editor cursor line; nodes covering it are highlighted. */
   activeLine: number | null;
   onMove: (positions: Positions) => void;
@@ -42,6 +46,7 @@ type CfgCanvasProps = {
 export function CfgCanvas({
   cfg,
   positions,
+  layoutEpoch,
   activeLine,
   onMove,
   onCheckpoint,
@@ -52,6 +57,16 @@ export function CfgCanvas({
   children,
 }: CfgCanvasProps) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const { fitView } = useReactFlow();
+  const fittedEpoch = useRef(layoutEpoch);
+
+  useEffect(() => {
+    if (fittedEpoch.current === layoutEpoch) return;
+    fittedEpoch.current = layoutEpoch;
+    // Wait a frame so React Flow has measured the new nodes.
+    const frame = requestAnimationFrame(() => void fitView({ ...FIT_VIEW_OPTIONS, duration: 200 }));
+    return () => cancelAnimationFrame(frame);
+  }, [layoutEpoch, fitView]);
 
   const nodes: CfgFlowNode[] = cfg.nodes.map((node) => ({
     id: node.id,
@@ -126,7 +141,7 @@ export function CfgCanvas({
         snapToGrid
         snapGrid={[4, 4]}
         fitView
-        fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+        fitViewOptions={FIT_VIEW_OPTIONS}
         minZoom={0.1}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />

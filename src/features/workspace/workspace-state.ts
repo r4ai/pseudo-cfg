@@ -1,7 +1,7 @@
 import { buildCfg, type Cfg, type Granularity } from "@/features/cfg/build-cfg";
 import type { Diagnostic } from "@/features/cfg/parse";
 import { reconcile } from "@/features/cfg/reconcile";
-import { autoLayout, placeIncrementally, type Positions } from "@/features/diagram/layout";
+import { autoLayout, mostlyReplaced, placeIncrementally, type Positions } from "@/features/diagram/layout";
 
 export type WorkspaceState = {
   source: string;
@@ -12,6 +12,8 @@ export type WorkspaceState = {
   /** Layout history for undo/redo in the diagram; the editor keeps its own text history. */
   undo: Positions[];
   redo: Positions[];
+  /** Bumped whenever the whole layout is replaced, so the view can fit the new graph. */
+  layoutEpoch: number;
 };
 
 /** What is persisted between visits. Ids in `cfg` let saved positions survive a reload. */
@@ -31,7 +33,11 @@ const HISTORY_LIMIT = 100;
 const createId = () => crypto.randomUUID().slice(0, 8);
 
 export function initWorkspace(saved: SavedWorkspace): WorkspaceState {
-  return rebuild({ ...saved, diagnostics: [], undo: [], redo: [] }, saved.source, saved.granularity);
+  return rebuild(
+    { ...saved, diagnostics: [], undo: [], redo: [], layoutEpoch: 0 },
+    saved.source,
+    saved.granularity,
+  );
 }
 
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
@@ -41,14 +47,14 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case "setGranularity": {
       // The node structure changes wholesale, so a fresh layout reads better than an incremental one.
       const next = rebuild(withCheckpoint(state), state.source, action.granularity);
-      return { ...next, positions: autoLayout(next.cfg) };
+      return relaid(next);
     }
     case "move":
       return { ...state, positions: { ...state.positions, ...action.positions } };
     case "checkpoint":
       return withCheckpoint(state);
     case "tidy":
-      return { ...withCheckpoint(state), positions: autoLayout(state.cfg) };
+      return relaid(withCheckpoint(state));
     case "undo":
       return travel(state, "undo", "redo");
     case "redo":
@@ -60,8 +66,13 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 function rebuild(state: WorkspaceState, source: string, granularity: Granularity): WorkspaceState {
   const built = buildCfg(source, granularity);
   const cfg = reconcile(state.cfg, built.cfg, createId);
-  const positions = placeIncrementally(state.cfg, state.positions, cfg);
-  return { ...state, source, granularity, cfg, diagnostics: built.diagnostics, positions };
+  const next = { ...state, source, granularity, cfg, diagnostics: built.diagnostics };
+  if (mostlyReplaced(state.cfg, state.positions, cfg)) return relaid(next);
+  return { ...next, positions: placeIncrementally(state.cfg, state.positions, cfg) };
+}
+
+function relaid(state: WorkspaceState): WorkspaceState {
+  return { ...state, positions: autoLayout(state.cfg), layoutEpoch: state.layoutEpoch + 1 };
 }
 
 function withCheckpoint(state: WorkspaceState): WorkspaceState {

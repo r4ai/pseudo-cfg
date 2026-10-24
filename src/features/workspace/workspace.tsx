@@ -34,6 +34,7 @@ export function Workspace() {
             <CfgCanvas
               cfg={state.cfg}
               positions={state.positions}
+              layoutEpoch={state.layoutEpoch}
               activeLine={cursorLine}
               onMove={(positions) => dispatch({ type: "move", positions })}
               onCheckpoint={() => dispatch({ type: "checkpoint" })}

@@ -33,8 +33,35 @@ export function nodeSize(node: CfgNode): Size {
   }
 }
 
-/** Lays out the whole graph from scratch. Back edges are ignored so loops read top to bottom. */
+/**
+ * Lays out the whole graph from scratch. Back edges are ignored so loops read top to bottom.
+ *
+ * Each scope (top-level code and every `def`) is a separate connected graph; they are laid
+ * out on their own and placed side by side in source order, wrapping into rows.
+ */
 export function autoLayout(cfg: Cfg): Positions {
+  const positions: Positions = {};
+  let x = 0;
+  let y = 0;
+  let rowHeight = 0;
+  for (const component of components(cfg)) {
+    const { positions: local, width, height } = layoutComponent(component);
+    if (x > 0 && x + width > ROW_WIDTH) {
+      x = 0;
+      y += rowHeight + SCOPE_GAP;
+      rowHeight = 0;
+    }
+    for (const [id, p] of Object.entries(local)) positions[id] = { x: p.x + x, y: p.y + y };
+    x += width + SCOPE_GAP;
+    rowHeight = Math.max(rowHeight, height);
+  }
+  return positions;
+}
+
+const SCOPE_GAP = 96;
+const ROW_WIDTH = 1600;
+
+function layoutComponent(cfg: Cfg): { positions: Positions; width: number; height: number } {
   const graph = new Graph();
   graph.setGraph({ rankdir: "TB", nodesep: 40, ranksep: 44, marginx: 0, marginy: 0 });
   graph.setDefaultEdgeLabel(() => ({}));
@@ -43,11 +70,38 @@ export function autoLayout(cfg: Cfg): Positions {
   layout(graph);
 
   const positions: Positions = {};
+  let width = 0;
+  let height = 0;
   for (const node of cfg.nodes) {
-    const { x = 0, y = 0, width, height } = graph.node(node.id);
-    positions[node.id] = { x: x - width / 2, y: y - height / 2 };
+    const { x = 0, y = 0, width: w, height: h } = graph.node(node.id);
+    positions[node.id] = { x: x - w / 2, y: y - h / 2 };
+    width = Math.max(width, x + w / 2);
+    height = Math.max(height, y + h / 2);
   }
-  return positions;
+  return { positions, width, height };
+}
+
+/** Connected subgraphs in the order their first node appears. */
+function components(cfg: Cfg): Cfg[] {
+  const root = new Map(cfg.nodes.map((node) => [node.id, node.id]));
+  const find = (id: string): string => {
+    const parent = root.get(id) ?? id;
+    if (parent === id) return id;
+    const top = find(parent);
+    root.set(id, top);
+    return top;
+  };
+  for (const edge of cfg.edges) root.set(find(edge.source), find(edge.target));
+
+  const groups = new Map<string, Cfg>();
+  for (const node of cfg.nodes) {
+    const key = find(node.id);
+    const group = groups.get(key) ?? { nodes: [], edges: [] };
+    group.nodes.push(node);
+    groups.set(key, group);
+  }
+  for (const edge of cfg.edges) groups.get(find(edge.source))?.edges.push(edge);
+  return [...groups.values()];
 }
 
 /**
@@ -59,9 +113,9 @@ export function autoLayout(cfg: Cfg): Positions {
  */
 export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cfg): Positions {
   const fresh = autoLayout(next);
+  if (mostlyReplaced(prev, prevPositions, next)) return fresh;
   const prevById = new Map(prev.nodes.map((node) => [node.id, node]));
   const kept = next.nodes.filter((node) => prevPositions[node.id] && prevById.has(node.id));
-  if (kept.length === 0) return fresh;
 
   const offsetOf = (id: string): Point | null => {
     const old = prevPositions[id];
@@ -90,6 +144,17 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
 
   makeRoom(next.nodes, positions, dirty);
   return positions;
+}
+
+/**
+ * Whether too little of the graph survived for the old arrangement to be worth keeping,
+ * as after replacing the whole text. Start and end nodes always survive, so they don't count.
+ */
+export function mostlyReplaced(prev: Cfg, prevPositions: Positions, next: Cfg): boolean {
+  const prevIds = new Set(prev.nodes.map((node) => node.id));
+  const content = next.nodes.filter((node) => node.kind !== "start" && node.kind !== "end");
+  const kept = content.filter((node) => prevIds.has(node.id) && prevPositions[node.id]);
+  return content.length === 0 || 2 * kept.length < content.length;
 }
 
 type Rect = { id: string; x: number; y: number; width: number; height: number };
