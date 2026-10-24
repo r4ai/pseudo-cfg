@@ -173,7 +173,7 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
     dirty.push(node);
   }
 
-  makeRoom(next.nodes, positions, dirty);
+  makeRoom(next, positions, dirty);
   return positions;
 }
 
@@ -197,14 +197,21 @@ export function mostlyReplaced(prev: Cfg, prevPositions: Positions, next: Cfg): 
 
 type Rect = { id: string; x: number; y: number; width: number; height: number };
 
-function makeRoom(nodes: CfgNode[], positions: Positions, dirty: CfgNode[]) {
+/**
+ * Resolves overlaps caused by new or grown nodes, and keeps a new node above the nodes it
+ * flows into, pushing whatever lies below down as inserting a line pushes text down.
+ */
+function makeRoom(cfg: Cfg, positions: Positions, dirty: CfgNode[]) {
   const rects = new Map<string, Rect>(
-    nodes.map((node) => [
+    cfg.nodes.map((node) => [
       node.id,
       { id: node.id, ...(positions[node.id] ?? { x: 0, y: 0 }), ...nodeSize(node) },
     ]),
   );
   const ordered = dirty.map((node) => rects.get(node.id) as Rect).toSorted((a, b) => a.y - b.y);
+  const pushDown = (from: Rect, by: number, except: Rect) => {
+    for (const other of rects.values()) if (other !== except && other.y >= from.y) other.y += by;
+  };
 
   for (const rect of ordered) {
     for (let guard = 0; guard < 100; guard++) {
@@ -214,11 +221,29 @@ function makeRoom(nodes: CfgNode[], positions: Positions, dirty: CfgNode[]) {
         rect.y = hit.y + hit.height + GAP;
         continue;
       }
-      const dy = rect.y + rect.height + GAP - hit.y;
-      for (const other of rects.values()) if (other !== rect && other.y >= hit.y) other.y += dy;
+      pushDown(hit, rect.y + rect.height + GAP - hit.y, rect);
+    }
+    for (const edge of cfg.edges) {
+      const next = edge.source === rect.id && !edge.back ? rects.get(edge.target) : undefined;
+      if (!next || next.y >= rect.y + rect.height + GAP) continue;
+      // Only what the new node flows into moves; parallel branches stay where they are.
+      const dy = rect.y + rect.height + GAP - next.y;
+      for (const id of descendants(cfg, next.id)) {
+        const r = rects.get(id);
+        if (r && r !== rect) r.y += dy;
+      }
     }
   }
   for (const rect of rects.values()) positions[rect.id] = { x: rect.x, y: rect.y };
+}
+
+/** `id` and every node reachable from it along forward edges. */
+function descendants(cfg: Cfg, id: string): Set<string> {
+  const seen = new Set([id]);
+  for (const current of seen) {
+    for (const edge of cfg.edges) if (edge.source === current && !edge.back) seen.add(edge.target);
+  }
+  return seen;
 }
 
 function overlaps(a: Rect, b: Rect, gap: number): boolean {

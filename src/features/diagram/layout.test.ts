@@ -32,6 +32,20 @@ describe("placeIncrementally with a new scope", () => {
 });
 
 describe("placeIncrementally", () => {
+  it("keeps a new node above the node it flows into", () => {
+    const src = "def f(xs):\n    for x in xs:\n        g(x)";
+    const prev = reconcile({ nodes: [], edges: [] }, buildCfg(src, "block").cfg, counter());
+    let k = 0;
+    const next = reconcile(prev, buildCfg(`${src}\n    return s`, "block").cfg, () => `new${k++}`);
+    const positions = placeIncrementally(prev, autoLayout(prev), next);
+    const added = next.nodes.find((n) => n.label === "return s");
+    const end = next.nodes.find((n) => n.kind === "end");
+    if (!added || !end) throw new Error("nodes missing");
+    expect(positions[end.id]?.y).toBeGreaterThanOrEqual(
+      (positions[added.id]?.y ?? 0) + nodeSize(added).height,
+    );
+  });
+
   const prev = reconcile({ nodes: [], edges: [] }, buildCfg("a()\nb()\nc()", "statement").cfg, counter());
   const moved = { ...autoLayout(prev) };
   const idOf = (label: string, cfg = prev) => cfg.nodes.find((n) => n.label === label)?.id as string;
