@@ -99,8 +99,14 @@ export function CfgCanvas({
     source: edge.source,
     target: edge.target,
     type: "cfg",
-    data: { label: edge.label, back: edge.back, geometry: edge.geometry },
+    data: {
+      label: edge.label,
+      back: edge.back,
+      geometry: edge.geometry,
+      highlighted: selected.has(edge.source) || selected.has(edge.target),
+    },
   }));
+  const empty = cfg.nodes.every((node) => node.kind === "start" || node.kind === "end");
 
   const dragging = useRef(false);
   const lastKeyboardMove = useRef(0);
@@ -182,6 +188,14 @@ export function CfgCanvas({
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         <Controls showInteractive={false} position="bottom-left" fitViewOptions={FIT_VIEW_OPTIONS} />
         <Panel position="top-right">{children}</Panel>
+        {empty && (
+          <Panel
+            position="top-center"
+            className="pointer-events-none !top-1/3 text-center text-sm text-muted-foreground"
+          >
+            Type pseudocode on the left to see its control flow here.
+          </Panel>
+        )}
       </ReactFlow>
     </div>
   );

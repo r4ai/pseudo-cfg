@@ -219,6 +219,13 @@
 .cfg-arrowhead {
   fill: var(--diagram-edge);
 }
+.cfg-edge.is-highlighted {
+  stroke: var(--diagram-accent);
+  stroke-width: 2.25;
+}
+.cfg-arrowhead.is-highlighted {
+  fill: var(--diagram-accent);
+}
 .cfg-edge-label {
   position: absolute;
   pointer-events: none;

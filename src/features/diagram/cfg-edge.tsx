@@ -4,7 +4,13 @@ import { BaseEdge, type Edge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/
 import { cn } from "@/lib/utils";
 import { arrowhead, type EdgeGeometry, roundedPath, toneOf } from "./edge-route";
 
-export type CfgEdgeData = { label: string | null; back: boolean; geometry: EdgeGeometry };
+export type CfgEdgeData = {
+  label: string | null;
+  back: boolean;
+  geometry: EdgeGeometry;
+  /** Touches a selected node. */
+  highlighted: boolean;
+};
 export type CfgFlowEdge = Edge<CfgEdgeData, "cfg">;
 
 /**
@@ -18,8 +24,11 @@ export function CfgEdge({ data }: EdgeProps<CfgFlowEdge>) {
   const tone = toneOf(data.label);
   return (
     <>
-      <BaseEdge path={roundedPath(line)} className={cn("cfg-edge", data.back && "is-back")} />
-      <polygon className="cfg-arrowhead" points={head} />
+      <BaseEdge
+        path={roundedPath(line)}
+        className={cn("cfg-edge", data.back && "is-back", data.highlighted && "is-highlighted")}
+      />
+      <polygon className={cn("cfg-arrowhead", data.highlighted && "is-highlighted")} points={head} />
       {data.label && (
         <EdgeLabelRenderer>
           <span
