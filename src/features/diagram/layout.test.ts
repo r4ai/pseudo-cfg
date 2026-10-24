@@ -8,6 +8,29 @@ const counter = () => {
   return () => `id${n++}`;
 };
 
+describe("placeIncrementally with a new scope", () => {
+  it("places a new scope beside the existing graph instead of over it", () => {
+    const prev = reconcile(
+      { nodes: [], edges: [] },
+      buildCfg("def f():\n    a()\n    b()", "block").cfg,
+      counter(),
+    );
+    const layout = autoLayout(prev);
+    let k = 0;
+    const next = reconcile(
+      prev,
+      buildCfg("def f():\n    a()\n    b()\nfoo()", "block").cfg,
+      () => `new${k++}`,
+    );
+    const positions = placeIncrementally(prev, layout, next);
+    for (const node of prev.nodes) expect(positions[node.id]).toEqual(layout[node.id]);
+    const right = Math.max(...prev.nodes.map((n) => (layout[n.id]?.x ?? 0) + nodeSize(n).width));
+    const added = next.nodes.filter((n) => n.id.startsWith("new"));
+    expect(added).toHaveLength(3);
+    for (const node of added) expect(positions[node.id]?.x).toBeGreaterThan(right);
+  });
+});
+
 describe("placeIncrementally", () => {
   const prev = reconcile({ nodes: [], edges: [] }, buildCfg("a()\nb()\nc()", "statement").cfg, counter());
   const moved = { ...autoLayout(prev) };

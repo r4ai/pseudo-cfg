@@ -30,7 +30,7 @@ export function Workspace() {
   const orientation = narrow ? "vertical" : "horizontal";
 
   return (
-    <ResizablePanelGroup key={orientation} orientation={orientation} className="min-h-0 flex-1">
+    <ResizablePanelGroup orientation={orientation} className="min-h-0 flex-1">
       <ResizablePanel defaultSize={narrow ? "45%" : "40%"} minSize="20%">
         <section aria-label="Pseudocode editor" className="flex h-full flex-col">
           <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b pr-1.5 pl-3">

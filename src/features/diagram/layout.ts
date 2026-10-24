@@ -133,11 +133,20 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
   // Auto layout positions are only used to place new nodes relative to their scope, so only
   // scopes that gained a node are laid out; edits within a statement lay out nothing.
   const isNew = (node: CfgNode) => !prevById.has(node.id) || !prevPositions[node.id];
+  const kept = next.nodes.filter((node) => !isNew(node));
   const fresh: Positions = {};
+  // A wholly new scope goes to the right of everything already placed, not on top of it.
+  const scopeOffsets = new Map<string, Point>();
+  let right = Math.max(...kept.map((node) => (prevPositions[node.id]?.x ?? 0) + nodeSize(node).width));
+  const top = Math.min(...kept.map((node) => prevPositions[node.id]?.y ?? 0));
   for (const scope of components(next)) {
-    if (scope.nodes.some(isNew)) Object.assign(fresh, layoutComponent(scope).positions);
+    if (!scope.nodes.some(isNew)) continue;
+    const local = layoutComponent(scope);
+    Object.assign(fresh, local.positions);
+    if (scope.nodes.some((node) => !isNew(node))) continue;
+    for (const node of scope.nodes) scopeOffsets.set(node.id, { x: right + SCOPE_GAP, y: top });
+    right += SCOPE_GAP + local.width;
   }
-  const kept = next.nodes.filter((node) => prevPositions[node.id] && prevById.has(node.id));
 
   const offsetOf = (id: string): Point | null => {
     const old = prevPositions[id];
@@ -158,7 +167,7 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
     }
     const preds = next.edges.filter((e) => e.target === node.id && !e.back).map((e) => offsetOf(e.source));
     const succs = next.edges.filter((e) => e.source === node.id && !e.back).map((e) => offsetOf(e.target));
-    const offset = mean(preds) ?? mean(succs) ?? globalOffset ?? { x: 0, y: 0 };
+    const offset = scopeOffsets.get(node.id) ?? mean(preds) ?? mean(succs) ?? globalOffset ?? { x: 0, y: 0 };
     const auto = fresh[node.id] ?? { x: 0, y: 0 };
     positions[node.id] = { x: auto.x + offset.x, y: auto.y + offset.y };
     dirty.push(node);
