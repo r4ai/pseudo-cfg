@@ -43,7 +43,11 @@ export function buildCfg(source: string, granularity: Granularity): BuildResult 
   if (hasDefs) builder.collectDefs(program.body);
   else builder.scope("Start", "End", 1, program.body);
   builder.flushDefs();
-  return { cfg: { nodes: builder.nodes, edges: builder.edges }, diagnostics: program.diagnostics };
+  builder.reportUnreachable();
+  return {
+    cfg: { nodes: builder.nodes, edges: builder.edges },
+    diagnostics: program.diagnostics.toSorted((a, b) => a.line - b.line),
+  };
 }
 
 class Builder {
@@ -77,6 +81,18 @@ class Builder {
   flushDefs() {
     for (let def = this.pendingDefs.shift(); def; def = this.pendingDefs.shift()) {
       this.scope(`def ${def.signature}`, "return", def.line, def.body, def.endLine);
+    }
+  }
+
+  /** Warns about statements no path from their scope's start reaches, such as code after `return`. */
+  reportUnreachable() {
+    const reached = new Set(this.nodes.filter((n) => n.kind === "start").map((n) => n.id));
+    for (const id of reached) {
+      for (const edge of this.edges) if (edge.source === id) reached.add(edge.target);
+    }
+    for (const node of this.nodes) {
+      if (node.kind === "end" || reached.has(node.id)) continue;
+      this.diagnostics.push({ line: node.line, message: "Unreachable code", severity: "warning" });
     }
   }
 
@@ -148,7 +164,8 @@ class Builder {
     if (!first) return ports;
     if (first.cond === null) return this.sequence(first.body, ports, loop);
 
-    const cond = this.add("branch", `${keyword} ${first.cond}`, first.line, first.endLine);
+    const label = `${first.keyword ?? keyword} ${first.cond}`.trimEnd();
+    const cond = this.add("branch", label, first.line, first.endLine);
     this.connect(ports, cond);
     const thenPorts = this.sequence(first.body, [{ from: cond, label: "True" }], loop);
     const elsePorts = this.ifChain(rest, [{ from: cond, label: "False" }], loop, "elif");
@@ -193,6 +210,6 @@ class Builder {
   }
 
   private report(line: number, message: string) {
-    this.diagnostics.push({ line, message });
+    this.diagnostics.push({ line, message, severity: "error" });
   }
 }

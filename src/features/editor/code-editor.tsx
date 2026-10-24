@@ -170,5 +170,5 @@ function listeners(callbacks: { current: Pick<CodeEditorProps, "onChange" | "onC
 
 function toLintDiagnostic(state: EditorState, diagnostic: Diagnostic): LintDiagnostic {
   const line = state.doc.line(Math.min(diagnostic.line, state.doc.lines));
-  return { from: line.from, to: line.to, severity: "error", message: diagnostic.message };
+  return { from: line.from, to: line.to, severity: diagnostic.severity, message: diagnostic.message };
 }

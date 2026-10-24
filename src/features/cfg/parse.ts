@@ -5,7 +5,8 @@
  * construct becomes a plain statement, so arbitrary pseudocode still produces a graph.
  */
 
-export type Diagnostic = { line: number; message: string };
+/** Errors are code the parser could not make sense of; warnings are code it shows only approximately. */
+export type Diagnostic = { line: number; message: string; severity: "error" | "warning" };
 
 export type Stmt =
   | { type: "simple"; text: string; line: number; endLine: number }
@@ -17,7 +18,8 @@ export type Stmt =
   | { type: "def"; signature: string; line: number; endLine: number; body: Stmt[] };
 
 /** `cond` is `null` for the trailing `else` branch. */
-export type IfBranch = { cond: string | null; line: number; endLine: number; body: Stmt[] };
+/** `keyword` labels branches that stand in for other constructs, such as `except`. */
+export type IfBranch = { cond: string | null; line: number; endLine: number; body: Stmt[]; keyword?: string };
 
 export type Program = { body: Stmt[]; diagnostics: Diagnostic[] };
 
@@ -133,10 +135,22 @@ function headerColon(text: string): number {
   return -1;
 }
 
+/**
+ * Block statements this model has no flow for. Their header is shown as a statement and
+ * their body follows in sequence, except for `except` and `case`, which become branches
+ * that may or may not be taken; `try` and `match` get a warning that this is approximate.
+ */
+const SEQUENTIAL_KEYWORDS = new Set(["with", "class", "async", "try", "except", "finally", "match", "case"]);
+const OPTIONAL_KEYWORDS = new Set(["except", "case"]);
+const APPROXIMATE: Record<string, string> = {
+  try: "'try' is approximated: each 'except' is shown as a branch that may be taken",
+  match: "'match' is approximated: each 'case' is shown as a branch that may be taken",
+};
+
 /** Leading identifier, so that `break2` or `return値` are not taken for keywords. */
 const leadingWord = (text: string) => /^[\p{L}\p{N}_]+/u.exec(text)?.[0];
 
-const COMPOUND_KEYWORDS = new Set(["if", "elif", "else", "while", "for", "def"]);
+const COMPOUND_KEYWORDS = new Set(["if", "elif", "else", "while", "for", "def", ...SEQUENTIAL_KEYWORDS]);
 
 type Header = { keyword: string; rest: string; inline: string | null };
 
@@ -171,10 +185,32 @@ class Parser {
         stmts.push(...this.block(line.indent));
         continue;
       }
+      if (line.text.startsWith("@")) {
+        // Decorators don't change the flow inside the function they decorate.
+        this.index++;
+        continue;
+      }
+      const header = parseHeader(line.text);
+      if (header && SEQUENTIAL_KEYWORDS.has(header.keyword)) {
+        stmts.push(...this.sequentialBlock(line, header));
+        continue;
+      }
       const stmt = this.statement(line);
       if (stmt) stmts.push(stmt);
     }
     return stmts;
+  }
+
+  private sequentialBlock(line: Line, header: Header): Stmt[] {
+    this.index++;
+    const warning = APPROXIMATE[header.keyword];
+    if (warning) this.report(line.line, warning, "warning");
+    if (OPTIONAL_KEYWORDS.has(header.keyword)) {
+      const branch = { keyword: header.keyword, cond: header.rest, line: line.line, endLine: line.endLine };
+      return [{ type: "if", branches: [{ ...branch, body: this.body(line, header) }] }];
+    }
+    const text = line.text.slice(0, line.text.length - (header.inline?.length ?? 0)).trimEnd();
+    return [{ type: "simple", text, line: line.line, endLine: line.endLine }, ...this.body(line, header)];
   }
 
   private statement(line: Line): Stmt | null {
@@ -272,8 +308,8 @@ class Parser {
     return this.lines[this.index];
   }
 
-  private report(line: number, message: string) {
-    this.diagnostics.push({ line, message });
+  private report(line: number, message: string, severity: Diagnostic["severity"] = "error") {
+    this.diagnostics.push({ line, message, severity });
   }
 }
 

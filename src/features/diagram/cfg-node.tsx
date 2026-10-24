@@ -22,7 +22,7 @@ export function CfgNode({ data, width = 0, height = 0, selected }: NodeProps<Cfg
         "relative grid place-items-center",
         active && "is-active",
         selected && "is-selected",
-        problems.length > 0 && "has-problem",
+        problems.length > 0 && (problems.some((p) => p.severity === "error") ? "has-problem" : "has-warning"),
       )}
       style={{ width, height }}
       title={problems.map((p) => `Line ${p.line}: ${p.message}`).join("\n") || undefined}
@@ -38,7 +38,12 @@ export function CfgNode({ data, width = 0, height = 0, selected }: NodeProps<Cfg
         {lines.join("\n")}
       </span>
       {problems.length > 0 && (
-        <span className="absolute -top-2 -right-2 grid size-4 place-items-center rounded-full bg-destructive text-[10px] font-semibold text-white">
+        <span
+          className={cn(
+            "absolute -top-2 -right-2 grid size-4 place-items-center rounded-full text-[10px] font-semibold text-white",
+            problems.some((p) => p.severity === "error") ? "bg-destructive" : "bg-warning",
+          )}
+        >
           !
         </span>
       )}
