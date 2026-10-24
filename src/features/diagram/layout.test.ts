@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildCfg } from "@/features/cfg/build-cfg";
 import { reconcile } from "@/features/cfg/reconcile";
-import { autoLayout, nodeSize, placeIncrementally } from "./layout";
+import { autoLayout, displayLines, nodeSize, placeIncrementally } from "./layout";
 
 const counter = () => {
   let n = 0;
@@ -77,5 +77,16 @@ const node = (label: string) => ({ id: "n", kind: "block" as const, label, line:
 describe("nodeSize", () => {
   it("gives wide characters two columns", () => {
     expect(nodeSize(node("日本語の長い文字列")).width).toBe(nodeSize(node("x".repeat(18))).width);
+  });
+});
+
+describe("displayLines", () => {
+  it("wraps long lines at a space and keeps short ones", () => {
+    const long = `result = compute(${"argument, ".repeat(8)}last)`;
+    const lines = displayLines(`short\n${long}`);
+    expect(lines[0]).toBe("short");
+    expect(lines.length).toBeGreaterThan(2);
+    expect(lines.join(" ").replaceAll(/\s+/g, " ")).toBe(`short ${long}`.replaceAll(/\s+/g, " "));
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(56);
   });
 });

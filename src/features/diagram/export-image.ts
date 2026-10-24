@@ -1,7 +1,7 @@
 import type { Cfg } from "@/features/cfg/build-cfg";
 import { arrowhead, roundedPath, toneOf } from "./edge-route";
 import { nodeBoxes, routeEdges } from "./geometry";
-import type { Positions } from "./layout";
+import { displayLines, type Positions } from "./layout";
 import { shapeOf } from "./shapes";
 
 const PADDING = 24;
@@ -62,13 +62,13 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
   const nodes = cfg.nodes.map((node) => {
     const box = boxes.get(node.id);
     if (!box) return "";
-    const shape = shapeOf(node.kind, box.width, box.height);
+    const lines = displayLines(node.label);
+    const shape = shapeOf(node.kind, box.width, box.height, lines.length > 1);
     const paint = `fill="${COLORS.fill[node.kind]}" stroke="${COLORS.stroke}" stroke-width="1.25"`;
     const outline =
       shape.type === "rect"
         ? `<rect width="${box.width}" height="${box.height}" rx="${shape.rx}" ${paint}/>`
         : `<polygon points="${shape.points}" ${paint}/>`;
-    const lines = node.label.split("\n");
     const tspans = lines
       .map(
         (line, i) =>

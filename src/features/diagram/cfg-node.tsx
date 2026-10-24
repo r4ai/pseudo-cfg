@@ -4,6 +4,7 @@ import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import type { CfgNode as CfgNodeModel } from "@/features/cfg/build-cfg";
 import type { Diagnostic } from "@/features/cfg/parse";
 import { cn } from "@/lib/utils";
+import { displayLines } from "./layout";
 import { shapeOf } from "./shapes";
 
 export type CfgNodeData = { node: CfgNodeModel; active: boolean; problems: Diagnostic[] };
@@ -12,7 +13,8 @@ export type CfgFlowNode = Node<CfgNodeData, "cfg">;
 /** Renders a node shape sized by `nodeSize`; edges attach through the hidden center handles. */
 export function CfgNode({ data, width = 0, height = 0, selected }: NodeProps<CfgFlowNode>) {
   const { node, active, problems } = data;
-  const shape = shapeOf(node.kind, width, height);
+  const lines = displayLines(node.label);
+  const shape = shapeOf(node.kind, width, height, lines.length > 1);
   const className = cn("cfg-shape", `cfg-shape-${node.kind}`);
   return (
     <div
@@ -33,7 +35,7 @@ export function CfgNode({ data, width = 0, height = 0, selected }: NodeProps<Cfg
         )}
       </svg>
       <span className="relative whitespace-pre px-3.5 text-center font-mono text-[13px] leading-5 text-foreground">
-        {node.label}
+        {lines.join("\n")}
       </span>
       {problems.length > 0 && (
         <span className="absolute -top-2 -right-2 grid size-4 place-items-center rounded-full bg-destructive text-[10px] font-semibold text-white">

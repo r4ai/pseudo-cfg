@@ -25,9 +25,41 @@ export function columns(line: string): number {
   return width;
 }
 
+/** Lines longer than this many columns wrap, so one long statement can't stretch the graph. */
+const MAX_COLUMNS = 56;
+
+/**
+ * The label as drawn: its own lines, with long ones wrapped at spaces where possible.
+ * Layout, the canvas and image export all use this so sizes and text agree.
+ */
+export function displayLines(label: string): string[] {
+  return label.split("\n").flatMap((line) => wrap(line));
+}
+
+function wrap(line: string): string[] {
+  const lines: string[] = [];
+  let rest = line;
+  while (columns(rest) > MAX_COLUMNS) {
+    let cut = 0;
+    let width = 0;
+    for (const ch of rest) {
+      const w = columns(ch);
+      if (width + w > MAX_COLUMNS) break;
+      width += w;
+      cut += ch.length;
+    }
+    const space = rest.lastIndexOf(" ", cut);
+    const at = space > cut / 2 ? space + 1 : cut;
+    lines.push(rest.slice(0, at).trimEnd());
+    rest = rest.slice(at);
+  }
+  lines.push(rest);
+  return lines;
+}
+
 /** Size of a node as rendered; text is monospace so it can be computed up front. */
 export function nodeSize(node: CfgNode): Size {
-  const lines = node.label.split("\n");
+  const lines = displayLines(node.label);
   const textWidth = Math.max(...lines.map(columns)) * CHAR_WIDTH;
   const textHeight = lines.length * LINE_HEIGHT;
   switch (node.kind) {
@@ -37,6 +69,11 @@ export function nodeSize(node: CfgNode): Size {
     case "block":
       return { width: Math.max(MIN_WIDTH, textWidth + 2 * PAD_X), height: textHeight + 2 * PAD_Y };
     case "branch": {
+      // A multi-line condition would make a very wide diamond; it is drawn as a hexagon instead.
+      if (lines.length > 1) {
+        const height = textHeight + 2 * PAD_Y;
+        return { width: Math.max(MIN_WIDTH, textWidth + 2 * PAD_X + height), height };
+      }
       // A diamond whose inscribed rectangle holds the text: w/W + h/H <= 1 for half-sizes.
       const height = textHeight + 2 * BRANCH_PAD_Y;
       const width = (textWidth + 2 * PAD_X) / (1 - textHeight / height);
