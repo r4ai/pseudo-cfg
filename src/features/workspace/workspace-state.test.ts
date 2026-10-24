@@ -44,3 +44,18 @@ describe("workspaceReducer", () => {
     expect(after.layoutEpoch).toBe(before.layoutEpoch);
   });
 });
+
+describe("adding a function", () => {
+  it("keeps the existing arrangement when a new def is added", () => {
+    const before = initWorkspace({
+      source: "a()\nb()",
+      granularity: "block",
+      cfg: { nodes: [], edges: [] },
+      positions: {},
+    });
+    const added = "a()\nb()\ndef g(x):\n    if x:\n        return 1\n    y()\n    return 2";
+    const after = workspaceReducer(before, { type: "edit", source: added });
+    expect(after.layoutEpoch).toBe(before.layoutEpoch);
+    for (const node of before.cfg.nodes) expect(after.positions[node.id]).toEqual(before.positions[node.id]);
+  });
+});

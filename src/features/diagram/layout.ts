@@ -218,6 +218,8 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
   return positions;
 }
 
+const isContent = (node: CfgNode) => node.kind !== "start" && node.kind !== "end";
+
 /**
  * Whether too little of the graph survived for the old arrangement to be worth keeping,
  * as after replacing the whole text. Start and end nodes always survive, so they don't count.
@@ -226,14 +228,18 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
  */
 export function mostlyReplaced(prev: Cfg, prevPositions: Positions, next: Cfg): boolean {
   const prevLabels = new Map(prev.nodes.map((node) => [node.id, node.label]));
-  const content = next.nodes.filter((node) => node.kind !== "start" && node.kind !== "end");
+  const kept = (node: CfgNode) => prevLabels.has(node.id) && prevPositions[node.id] !== undefined;
+  if (!next.nodes.some(isContent)) return true;
+  // A wholly new scope is placed beside the others, so it says nothing about the rest.
+  const content = components(next)
+    .filter((scope) => scope.nodes.some(kept))
+    .flatMap((scope) => scope.nodes.filter(isContent));
+  if (content.length === 0) return !next.nodes.some(kept);
   let score = 0;
   for (const node of content) {
-    const label = prevLabels.get(node.id);
-    if (label === undefined || !prevPositions[node.id]) continue;
-    score += label === node.label ? 2 : 1;
+    if (kept(node)) score += prevLabels.get(node.id) === node.label ? 2 : 1;
   }
-  return content.length === 0 || score < content.length;
+  return score < content.length;
 }
 
 type Rect = { id: string; x: number; y: number; width: number; height: number };

@@ -70,7 +70,8 @@ function rebuild(state: WorkspaceState, source: string, granularity: Granularity
   const built = buildCfg(source, granularity);
   const cfg = reconcile(state.cfg, built.cfg, createId);
   const next = { ...state, source, granularity, cfg, diagnostics: built.diagnostics };
-  if (mostlyReplaced(state.cfg, state.positions, cfg)) return relaid(next);
+  // Laying out afresh discards manual positions, so it can be undone from the diagram.
+  if (mostlyReplaced(state.cfg, state.positions, cfg)) return relaid(withCheckpoint(next));
   return { ...next, positions: placeIncrementally(state.cfg, state.positions, cfg) };
 }
 
