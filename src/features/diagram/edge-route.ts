@@ -4,7 +4,10 @@ export type Box = { x: number; y: number; width: number; height: number };
 export type EdgeGeometry = {
   /** Orthogonal polyline from the source anchor to the target anchor. */
   points: Point[];
+  /** Center of the label, beside the start of the line rather than on it. */
   labelAt: Point;
+  /** Points on horizontal segments where another edge's vertical segment crosses; drawn as hops. */
+  hops: Point[];
 };
 
 export type EdgeTone = "yes" | "no" | "plain";
@@ -19,7 +22,10 @@ export function toneOf(label: string | null): EdgeTone {
 const LANE_GAP = 20;
 /** How far from a flat top's corners an off-center edge may enter. */
 const FLAT_INSET = 16;
-const LABEL_DISTANCE = 16;
+const LABEL_GAP = 4;
+const LABEL_HEIGHT = 16;
+/** Radius of the arc a line draws to hop over one it crosses. */
+const HOP = 5;
 
 export type RouteOptions = {
   /**
@@ -160,16 +166,46 @@ function dogleg(s: Point, t: Point, axis: "vertical" | "horizontal"): Point[] {
 }
 
 function withLabel(points: Point[]): EdgeGeometry {
-  const [s, next] = points as [Point, Point];
-  const d = unit(s, next);
-  return { points, labelAt: { x: s.x + d.x * LABEL_DISTANCE, y: s.y + d.y * LABEL_DISTANCE } };
+  return { points, labelAt: labelPosition(points, labelWidth("False")), hops: [] };
 }
 
-/** SVG path for a polyline with rounded corners. */
-export function roundedPath(points: Point[], radius = 8): string {
+/** Width of an edge label pill, as drawn on the canvas and in exported images. */
+export function labelWidth(label: string): number {
+  return label.length * 6.5 + 12;
+}
+
+/**
+ * Center of a label of `width` placed just past the start of the line and off to its
+ * side (right of a vertical start, above a horizontal one), so it never hides where the
+ * line leaves its node.
+ */
+export function labelPosition(points: Point[], width: number): Point {
+  const [s, next] = points as [Point, Point];
+  if (Math.abs(s.x - next.x) < 0.5) {
+    const down = next.y > s.y ? 1 : -1;
+    return { x: s.x + LABEL_GAP + width / 2, y: s.y + down * (LABEL_HEIGHT / 2 + LABEL_GAP) };
+  }
+  const dir = next.x > s.x ? 1 : -1;
+  return { x: s.x + dir * (LABEL_GAP + width / 2), y: s.y - LABEL_HEIGHT / 2 - LABEL_GAP / 2 };
+}
+/** SVG path for a polyline with rounded corners, hopping over the lines it crosses at `hops`. */
+export function roundedPath(points: Point[], radius = 8, hops: Point[] = []): string {
   const [first, ...rest] = points;
   if (!first) return "";
   let d = `M ${first.x} ${first.y}`;
+  const lineTo = (from: Point, to: Point) => {
+    if (Math.abs(from.y - to.y) < 0.5) {
+      const dir = to.x > from.x ? 1 : -1;
+      const on = hops
+        .filter((h) => Math.abs(h.y - from.y) < 0.5 && (h.x - from.x) * dir > HOP && (to.x - h.x) * dir > HOP)
+        .toSorted((a, b) => (a.x - b.x) * dir);
+      // Clockwise from the left end (or anticlockwise from the right) bulges upwards.
+      for (const h of on)
+        d += ` L ${h.x - dir * HOP} ${h.y} A ${HOP} ${HOP} 0 0 ${dir > 0 ? 1 : 0} ${h.x + dir * HOP} ${h.y}`;
+    }
+    d += ` L ${to.x} ${to.y}`;
+  };
+  let cursor = first;
   for (let i = 1; i < points.length - 1; i++) {
     const prev = points[i - 1] as Point;
     const corner = points[i] as Point;
@@ -177,12 +213,45 @@ export function roundedPath(points: Point[], radius = 8): string {
     const r = Math.min(radius, distance(prev, corner) / 2, distance(corner, next) / 2);
     const a = toward(corner, prev, r);
     const b = toward(corner, next, r);
-    d += ` L ${a.x} ${a.y} Q ${corner.x} ${corner.y} ${b.x} ${b.y}`;
+    lineTo(cursor, a);
+    d += ` Q ${corner.x} ${corner.y} ${b.x} ${b.y}`;
+    cursor = b;
   }
   const last = rest.at(-1);
-  return last ? `${d} L ${last.x} ${last.y}` : d;
+  if (last) lineTo(cursor, last);
+  return d;
 }
 
+/**
+ * Where each route's horizontal segments cross another route's vertical segments, away
+ * from corners and ends, so merging edges (which meet at an end) are not hops.
+ */
+export function crossings(routes: Point[][]): Point[][] {
+  const margin = 8 + HOP;
+  const segments = (points: Point[], horizontal: boolean) =>
+    points.slice(1).flatMap((b, i) => {
+      const a = points[i] as Point;
+      const isHorizontal = Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) >= 0.5;
+      const isVertical = Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) >= 0.5;
+      return (horizontal ? isHorizontal : isVertical) ? [[a, b] as const] : [];
+    });
+  const verticals = routes.map((points) => segments(points, false));
+  return routes.map((points, i) =>
+    segments(points, true).flatMap(([a, b]) => {
+      const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
+      return verticals.flatMap((list, j) =>
+        j === i
+          ? []
+          : list.flatMap(([c, d]) => {
+              const [y0, y1] = [Math.min(c.y, d.y), Math.max(c.y, d.y)];
+              const crosses =
+                x0 + margin < c.x && c.x < x1 - margin && y0 + margin < a.y && a.y < y1 - margin;
+              return crosses ? [{ x: c.x, y: a.y }] : [];
+            }),
+      );
+    }),
+  );
+}
 /** Arrowhead triangle at the end of the polyline, plus the polyline trimmed to the arrow's base. */
 export function arrowhead(points: Point[], length = 9, halfWidth = 4.5): { line: Point[]; head: string } {
   const tip = points.at(-1) as Point;

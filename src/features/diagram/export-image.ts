@@ -1,5 +1,5 @@
 import type { Cfg } from "@/features/cfg/build-cfg";
-import { arrowhead, roundedPath, toneOf } from "./edge-route";
+import { arrowhead, labelWidth, roundedPath, toneOf } from "./edge-route";
 import { nodeBoxes, routeEdges } from "./geometry";
 import { displayLines, type Positions } from "./layout";
 import { shapeOf } from "./shapes";
@@ -45,14 +45,14 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
   const edges = routed.map(({ geometry, back }) => {
     const { line, head } = arrowhead(geometry.points);
     const dash = back ? ` stroke-dasharray="5 4"` : "";
-    return `<path d="${roundedPath(line)}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"${dash}/><polygon points="${head}" fill="${COLORS.edge}"/>`;
+    return `<path d="${roundedPath(line, 8, geometry.hops)}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"${dash}/><polygon points="${head}" fill="${COLORS.edge}"/>`;
   });
   // Labels go on top of every edge, as they do on screen.
   const labels = routed.flatMap(({ geometry, label }) => {
     if (!label) return [];
     const { x, y } = geometry.labelAt;
     const color = COLORS.label[toneOf(label)];
-    const pill = label.length * 6.5 + 12;
+    const pill = labelWidth(label);
     return [
       `<rect x="${x - pill / 2}" y="${y - 8}" width="${pill}" height="16" rx="8" fill="${color.fill}" stroke="${color.stroke}"/>` +
         `<text x="${x}" y="${y}" fill="${color.text}" font-size="11" font-weight="500" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`,

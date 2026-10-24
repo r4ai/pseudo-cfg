@@ -25,7 +25,7 @@ export function CfgEdge({ data }: EdgeProps<CfgFlowEdge>) {
   return (
     <>
       <BaseEdge
-        path={roundedPath(line)}
+        path={roundedPath(line, 8, data.geometry.hops)}
         className={cn("cfg-edge", data.back && "is-back", data.highlighted && "is-highlighted")}
       />
       <polygon className={cn("cfg-arrowhead", data.highlighted && "is-highlighted")} points={head} />
