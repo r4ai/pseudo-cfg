@@ -75,7 +75,7 @@ export function Workspace() {
           </footer>
         </section>
       </ResizablePanel>
-      <ResizableHandle />
+      <ResizableHandle withHandle />
       <ResizablePanel minSize="25%">
         <section aria-label="Control-flow graph" className="h-full">
           <ReactFlowProvider>
