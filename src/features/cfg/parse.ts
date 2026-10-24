@@ -29,7 +29,8 @@ export function parse(source: string): Program {
   const diagnostics: Diagnostic[] = [];
   const lines = toLogicalLines(source);
   const parser = new Parser(lines, diagnostics);
-  const body = parser.block(lines[0]?.indent ?? 0);
+  // The shallowest line is the top level, so an indented first line cannot hide the rest.
+  const body = parser.block(Math.min(...lines.map((line) => line.indent)));
   return { body, diagnostics };
 }
 
@@ -115,13 +116,16 @@ function headerColon(text: string): number {
   return -1;
 }
 
+/** Leading identifier, so that `break2` or `return値` are not taken for keywords. */
+const leadingWord = (text: string) => /^[\p{L}\p{N}_]+/u.exec(text)?.[0];
+
 const COMPOUND_KEYWORDS = new Set(["if", "elif", "else", "while", "for", "def"]);
 
 type Header = { keyword: string; rest: string; inline: string | null };
 
 /** Recognises `keyword rest:` (optionally followed by an inline body). */
 function parseHeader(text: string): Header | null {
-  const keyword = /^[A-Za-z_]+/.exec(text)?.[0];
+  const keyword = leadingWord(text);
   if (!keyword || !COMPOUND_KEYWORDS.has(keyword)) return null;
   const colon = headerColon(text);
   if (colon < 0) return null;
@@ -246,7 +250,7 @@ class Parser {
 }
 
 function simpleStatement(line: Line): Stmt {
-  const keyword = /^[A-Za-z_]+/.exec(line.text)?.[0];
+  const keyword = leadingWord(line.text);
   if (keyword === "break" || keyword === "continue") {
     return { type: keyword, line: line.line };
   }

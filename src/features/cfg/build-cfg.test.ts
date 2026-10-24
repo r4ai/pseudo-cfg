@@ -99,4 +99,18 @@ describe("buildCfg", () => {
     const { cfg } = buildCfg("# heading\nprint('#1')  # trailing", "block");
     expect(cfg.nodes.map((n) => n.label)).toEqual(["Start", "print('#1')", "End"]);
   });
+
+  it("does not mistake identifiers that start with a keyword for that keyword", () => {
+    const { cfg } = buildCfg("break2 = 1\nreturn値 = 3\nafter()", "block");
+    expect(edgesOf(cfg)).toEqual([
+      "Start --> break2 = 1; return値 = 3; after()",
+      "break2 = 1; return値 = 3; after() --> End",
+    ]);
+  });
+
+  it("keeps lines after an indented first line and reports the indent", () => {
+    const { cfg, diagnostics } = buildCfg("    x = 1\ny = 2", "block");
+    expect(edgesOf(cfg)).toEqual(["Start --> x = 1; y = 2", "x = 1; y = 2 --> End"]);
+    expect(diagnostics).toEqual([{ line: 1, message: "Unexpected indent" }]);
+  });
 });
