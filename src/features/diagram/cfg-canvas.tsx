@@ -111,6 +111,14 @@ export function CfgCanvas({
   const dragging = useRef(false);
   const lastKeyboardMove = useRef(0);
 
+  const startDrag = () => {
+    dragging.current = true;
+    onCheckpoint();
+  };
+  const stopDrag = () => {
+    dragging.current = false;
+  };
+
   const onNodesChange: OnNodesChange<CfgFlowNode> = (changes) => {
     const moved = movedPositions(changes);
     if (Object.keys(moved).length > 0) {
@@ -172,13 +180,10 @@ export function CfgCanvas({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
-        onNodeDragStart={() => {
-          dragging.current = true;
-          onCheckpoint();
-        }}
-        onNodeDragStop={() => {
-          dragging.current = false;
-        }}
+        onNodeDragStart={startDrag}
+        onNodeDragStop={stopDrag}
+        onSelectionDragStart={startDrag}
+        onSelectionDragStop={stopDrag}
         onNodeDoubleClick={(_, node) => onOpenNode(node.data.node)}
         colorMode="system"
         nodesConnectable={false}

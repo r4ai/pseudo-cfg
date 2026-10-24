@@ -174,8 +174,12 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
   const fresh: Positions = {};
   // A wholly new scope goes to the right of everything already placed, not on top of it.
   const scopeOffsets = new Map<string, Point>();
-  let right = Math.max(...kept.map((node) => (prevPositions[node.id]?.x ?? 0) + nodeSize(node).width));
-  const top = Math.min(...kept.map((node) => prevPositions[node.id]?.y ?? 0));
+  // Reduced rather than spread, which overflows the stack on very large graphs.
+  let right = kept.reduce(
+    (max, n) => Math.max(max, (prevPositions[n.id]?.x ?? 0) + nodeSize(n).width),
+    -Infinity,
+  );
+  const top = kept.reduce((min, n) => Math.min(min, prevPositions[n.id]?.y ?? 0), Infinity);
   for (const scope of components(next)) {
     if (!scope.nodes.some(isNew)) continue;
     const local = layoutComponent(scope);
@@ -210,7 +214,7 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
     dirty.push(node);
   }
 
-  makeRoom(next, positions, dirty);
+  makeRoom(next, positions, dirty, (node) => !prevById.has(node.id));
   return positions;
 }
 
@@ -238,7 +242,7 @@ type Rect = { id: string; x: number; y: number; width: number; height: number };
  * Resolves overlaps caused by new or grown nodes, and keeps a new node above the nodes it
  * flows into, pushing whatever lies below down as inserting a line pushes text down.
  */
-function makeRoom(cfg: Cfg, positions: Positions, dirty: CfgNode[]) {
+function makeRoom(cfg: Cfg, positions: Positions, dirty: CfgNode[], isAdded: (node: CfgNode) => boolean) {
   const rects = new Map<string, Rect>(
     cfg.nodes.map((node) => [
       node.id,
@@ -246,6 +250,8 @@ function makeRoom(cfg: Cfg, positions: Positions, dirty: CfgNode[]) {
     ]),
   );
   const ordered = dirty.map((node) => rects.get(node.id) as Rect).toSorted((a, b) => a.y - b.y);
+  // Only added nodes push what they flow into; a node that merely grew keeps its neighbours put.
+  const added = new Set(dirty.filter(isAdded).map((node) => node.id));
   const pushDown = (from: Rect, by: number, except: Rect) => {
     for (const other of rects.values()) if (other !== except && other.y >= from.y) other.y += by;
   };
@@ -260,6 +266,7 @@ function makeRoom(cfg: Cfg, positions: Positions, dirty: CfgNode[]) {
       }
       pushDown(hit, rect.y + rect.height + GAP - hit.y, rect);
     }
+    if (!added.has(rect.id)) continue;
     for (const edge of cfg.edges) {
       const next = edge.source === rect.id && !edge.back ? rects.get(edge.target) : undefined;
       if (!next || next.y >= rect.y + rect.height + GAP) continue;

@@ -161,4 +161,15 @@ describe("buildCfg", () => {
     const { cfg } = buildCfg("@cache\ndef f():\n    return 1", "block");
     expect(cfg.nodes.map((n) => n.label)).toEqual(["def f()", "return 1", "return"]);
   });
+
+  it("finds the header colon after a triple-quoted string", () => {
+    const { cfg, diagnostics } = buildCfg('if x == """a"b""":\n    y = 1', "block");
+    expect(cfg.nodes.map((n) => n.kind)).toContain("branch");
+    expect(diagnostics).toEqual([]);
+  });
+
+  it("parses very long inputs", () => {
+    const src = Array.from({ length: 120_000 }, (_, i) => `x${i} = ${i}`).join("\n");
+    expect(buildCfg(src, "block").cfg.nodes).toHaveLength(3);
+  });
 });

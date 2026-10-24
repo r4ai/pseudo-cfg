@@ -25,6 +25,13 @@ describe("routeEdge", () => {
     expect(laneX).toBeGreaterThan(blocker.x + blocker.width);
   });
 
+  it("goes round a node in the way instead of straight through it", () => {
+    const body = box(0, 80, 100, 40);
+    const { points } = routeEdge(box(0, 0), box(0, 160), true, [body]);
+    const xs = points.map((p) => p.x);
+    expect(Math.min(...xs) < body.x || Math.max(...xs) > body.x + body.width).toBe(true);
+  });
+
   it("routes a back edge outside the nodes it passes", () => {
     const obstacle = box(0, 60, 300);
     const { points } = routeEdge(box(0, 120), box(0, 0), false, [obstacle]);

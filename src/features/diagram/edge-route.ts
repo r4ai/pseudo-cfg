@@ -44,8 +44,11 @@ export function routeEdge(
   if (target.y >= source.y + source.height) {
     const spansSource = target.x <= sourceX && sourceX <= target.x + target.width;
     const straight = target.x + FLAT_INSET <= sourceX && sourceX <= target.x + target.width - FLAT_INSET;
-    if (flatTarget && straight) return withLabel([bottom(source), { x: sourceX, y: target.y }]);
-    if (!fromBranch || spansSource) return withLabel(dogleg(bottom(source), top(target), "vertical"));
+    const plumb = [bottom(source), { x: sourceX, y: target.y }];
+    if (flatTarget && straight && isClear(plumb, others())) return withLabel(plumb);
+    const down = dogleg(bottom(source), top(target), "vertical");
+    // A branch whose way down is blocked (an if without else, skipping its body) goes round the side.
+    if (!fromBranch || (spansSource && isClear(down, others()))) return withLabel(down);
     // Leave through the side vertex facing the target so True and False exits stay apart.
     const toRight = targetX > sourceX;
     const s = toRight ? right(source) : left(source);

@@ -95,7 +95,9 @@ function travel(state: WorkspaceState, from: "undo" | "redo", to: "undo" | "redo
   if (snapshot.granularity !== state.granularity) {
     // Rebuild against the snapshot's graph so its ids, and so its positions, carry over.
     const restored = { ...moved, cfg: snapshot.cfg, positions: snapshot.positions };
-    return rebuild(restored, state.source, snapshot.granularity);
+    // The graph changes wholesale, so the view fits it as after a switch.
+    const rebuilt = rebuild(restored, state.source, snapshot.granularity);
+    return { ...rebuilt, layoutEpoch: Math.max(rebuilt.layoutEpoch, state.layoutEpoch + 1) };
   }
   // Nodes added after the snapshot keep their current place.
   return { ...moved, positions: { ...state.positions, ...snapshot.positions } };

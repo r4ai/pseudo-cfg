@@ -32,7 +32,7 @@ export function parse(source: string): Program {
   const lines = toLogicalLines(source);
   const parser = new Parser(lines, diagnostics);
   // The shallowest line is the top level, so an indented first line cannot hide the rest.
-  const body = parser.block(Math.min(...lines.map((line) => line.indent)));
+  const body = parser.block(lines.reduce((min, line) => Math.min(min, line.indent), Infinity));
   return { body, diagnostics };
 }
 
@@ -123,12 +123,17 @@ function headerColon(text: string): number {
   let quote: string | null = null;
   let depth = 0;
   for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
+    const ch = text[i] as string;
     if (quote) {
       if (ch === "\\") i++;
-      else if (ch === quote) quote = null;
-    } else if (ch === '"' || ch === "'") quote = ch;
-    else if (ch === "(" || ch === "[" || ch === "{") depth++;
+      else if (text.startsWith(quote, i)) {
+        i += quote.length - 1;
+        quote = null;
+      }
+    } else if (ch === '"' || ch === "'") {
+      quote = text.startsWith(ch.repeat(3), i) ? ch.repeat(3) : ch;
+      i += quote.length - 1;
+    } else if (ch === "(" || ch === "[" || ch === "{") depth++;
     else if (ch === ")" || ch === "]" || ch === "}") depth--;
     else if (ch === ":" && depth === 0) return i;
   }

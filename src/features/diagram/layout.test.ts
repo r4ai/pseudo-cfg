@@ -101,3 +101,21 @@ describe("displayLines", () => {
     for (const line of lines) expect(line.length).toBeLessThanOrEqual(56);
   });
 });
+
+describe("placeIncrementally when a node grows", () => {
+  it("leaves hand-placed successors where they are", () => {
+    const prev = reconcile({ nodes: [], edges: [] }, buildCfg("a()\nb()\nc()", "statement").cfg, counter());
+    const layout = autoLayout(prev);
+    const id = (label: string) => prev.nodes.find((n) => n.label === label)?.id as string;
+    const a = layout[id("a()")] ?? { x: 0, y: 0 };
+    const moved = { ...layout, [id("b()")]: { x: a.x + 400, y: a.y }, [id("c()")]: { x: a.x + 800, y: a.y } };
+    const next = reconcile(
+      prev,
+      buildCfg("a(1234567890123456789)\nb()\nc()", "statement").cfg,
+      () => "fresh",
+    );
+    const positions = placeIncrementally(prev, moved, next);
+    expect(positions[id("b()")]).toEqual(moved[id("b()")]);
+    expect(positions[id("c()")]).toEqual(moved[id("c()")]);
+  });
+});
