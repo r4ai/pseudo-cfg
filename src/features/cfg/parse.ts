@@ -29,7 +29,7 @@ const TAB_WIDTH = 4;
 
 export function parse(source: string): Program {
   const diagnostics: Diagnostic[] = [];
-  const lines = toLogicalLines(source);
+  const lines = toLogicalLines(source.split(/\r?\n/), 0, diagnostics);
   const parser = new Parser(lines, diagnostics);
   // The shallowest line is the top level, so an indented first line cannot hide the rest.
   const body = parser.block(lines.reduce((min, line) => Math.min(min, line.indent), Infinity));
@@ -40,9 +40,8 @@ export function parse(source: string): Program {
  * Splits the source into logical lines: comments and blank lines are dropped,
  * and lines inside open brackets or after a trailing backslash are joined.
  */
-function toLogicalLines(source: string): Line[] {
+function toLogicalLines(physical: string[], offset: number, diagnostics: Diagnostic[]): Line[] {
   const result: Line[] = [];
-  const physical = source.split(/\r?\n/);
   let pending: Line | null = null;
   let depth = 0;
   let quote: string | null = null;
@@ -52,7 +51,7 @@ function toLogicalLines(source: string): Line[] {
     const scanned = scanLine(raw, quote);
     const { code, depthDelta } = scanned;
     quote = scanned.quote;
-    const lineNo = index + 1;
+    const lineNo = offset + index + 1;
     if (pending) {
       // Lines inside a multi-line string keep their text; others are joined with a space.
       pending.text = startsInString ? `${pending.text}\n${code}` : `${pending.text} ${code.trim()}`.trim();
@@ -70,7 +69,16 @@ function toLogicalLines(source: string): Line[] {
       pending.text = pending.text.replace(/\\$/, "");
     }
   });
-  if (pending) result.push(pending);
+  const open = pending as Line | null;
+  if (open && quote !== null) {
+    // An unclosed triple quote, usually one being typed, would swallow the rest of the file.
+    // Keep it to its own line so the graph below doesn't collapse meanwhile.
+    diagnostics.push({ line: open.line, message: "Unterminated triple-quoted string", severity: "error" });
+    const first = physical[open.line - offset - 1] ?? "";
+    result.push({ ...open, text: first.trim(), endLine: open.line });
+    return [...result, ...toLogicalLines(physical.slice(open.line - offset), open.line, diagnostics)];
+  }
+  if (open) result.push(open);
   return result;
 }
 

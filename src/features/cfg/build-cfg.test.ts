@@ -172,4 +172,19 @@ describe("buildCfg", () => {
     const src = Array.from({ length: 120_000 }, (_, i) => `x${i} = ${i}`).join("\n");
     expect(buildCfg(src, "block").cfg.nodes).toHaveLength(3);
   });
+
+  it("keeps code after an unclosed triple quote", () => {
+    const { cfg, diagnostics } = buildCfg('x = """never closed\ny = 1\nif a:\n    b()', "statement");
+    expect(cfg.nodes.map((n) => n.label)).toEqual([
+      "Start",
+      'x = """never closed',
+      "y = 1",
+      "if a",
+      "b()",
+      "End",
+    ]);
+    expect(diagnostics).toEqual([
+      { line: 1, message: "Unterminated triple-quoted string", severity: "error" },
+    ]);
+  });
 });
