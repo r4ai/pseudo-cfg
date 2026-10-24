@@ -126,4 +126,9 @@ describe("buildCfg", () => {
     const ret = cfg.nodes.find((n) => n.kind === "block");
     expect(ret).toMatchObject({ line: 2, endLine: 5 });
   });
+
+  it("labels the exit taken by raise", () => {
+    const { cfg } = buildCfg("if bad:\n    raise ValueError()\nok()", "block");
+    expect(edgesOf(cfg)).toContain("raise ValueError() -raise-> End");
+  });
 });

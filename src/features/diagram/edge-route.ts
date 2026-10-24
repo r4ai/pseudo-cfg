@@ -9,10 +9,10 @@ export type EdgeGeometry = {
 
 export type EdgeTone = "yes" | "no" | "plain";
 
-/** Whether an edge label means the condition held (`True`, `next`) or not (`False`, `done`). */
+/** Whether an edge label means the condition held (`True`, `next`) or not (`False`, `done`, `raise`). */
 export function toneOf(label: string | null): EdgeTone {
   if (label === "True" || label === "next") return "yes";
-  if (label === "False" || label === "done") return "no";
+  if (label === "False" || label === "done" || label === "raise") return "no";
   return "plain";
 }
 
@@ -53,8 +53,13 @@ export function routeEdge(
     const beyondSide = toRight ? t.x > s.x : t.x < s.x;
     const direct = [s, { x: t.x, y: s.y }, t];
     if (beyondSide && isClear(direct, others())) return withLabel(direct);
-    const lane = s.x + (toRight ? LANE_GAP : -LANE_GAP);
     const approach = Math.max(s.y, t.y - LANE_GAP);
+    // Step the lane outwards past any node it would run through on its way down.
+    let lane = s.x + (toRight ? LANE_GAP : -LANE_GAP);
+    const inTheWay = others().filter((o) => o.y < approach && o.y + o.height > s.y);
+    for (let hit = laneHit(lane, inTheWay); hit; hit = laneHit(lane, inTheWay)) {
+      lane = toRight ? hit.x + hit.width + LANE_GAP : hit.x - LANE_GAP;
+    }
     return withLabel([s, { x: lane, y: s.y }, { x: lane, y: approach }, { x: t.x, y: approach }, t]);
   }
 
@@ -130,6 +135,8 @@ export function arrowhead(points: Point[], length = 9, halfWidth = 4.5): { line:
     head: `${tip.x},${tip.y} ${base.x + side.x},${base.y + side.y} ${base.x - side.x},${base.y - side.y}`,
   };
 }
+
+const laneHit = (x: number, boxes: Box[]) => boxes.find((o) => o.x <= x && x <= o.x + o.width);
 
 /** Whether an orthogonal polyline stays out of every box. */
 function isClear(points: Point[], boxes: Box[]): boolean {

@@ -92,7 +92,7 @@ class Builder {
           open = this.add("block", stmt.text, stmt.line, stmt.endLine);
           this.connect(ports, open);
         }
-        ports = [{ from: open, label: null }];
+        ports = [{ from: open, label: stmt.type === "return" && stmt.raises ? "raise" : null }];
         if (stmt.type === "return") {
           this.connect(ports, this.exit);
           ports = [];

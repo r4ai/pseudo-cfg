@@ -9,7 +9,7 @@ export type Diagnostic = { line: number; message: string };
 
 export type Stmt =
   | { type: "simple"; text: string; line: number; endLine: number }
-  | { type: "return"; text: string; line: number; endLine: number }
+  | { type: "return"; text: string; line: number; endLine: number; raises: boolean }
   | { type: "break" | "continue"; line: number }
   | { type: "if"; branches: IfBranch[] }
   | { type: "while"; cond: string; line: number; body: Stmt[]; orelse: Stmt[] }
@@ -272,7 +272,13 @@ function simpleStatement(line: Line): Stmt {
     return { type: keyword, line: line.line };
   }
   if (keyword === "return" || keyword === "raise") {
-    return { type: "return", text: line.text, line: line.line, endLine: line.endLine };
+    return {
+      type: "return",
+      text: line.text,
+      line: line.line,
+      endLine: line.endLine,
+      raises: keyword === "raise",
+    };
   }
   return { type: "simple", text: line.text, line: line.line, endLine: line.endLine };
 }

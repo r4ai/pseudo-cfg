@@ -18,6 +18,13 @@ describe("routeEdge", () => {
     expect(points.at(-1)).toEqual({ x: 250, y: 100 });
   });
 
+  it("moves a branch's side lane past a node below it", () => {
+    const blocker = box(90, 80, 100, 40);
+    const { points } = routeEdge(box(0, 0), box(60, 200, 40), true, [blocker]);
+    const laneX = points[1]?.x ?? 0;
+    expect(laneX).toBeGreaterThan(blocker.x + blocker.width);
+  });
+
   it("routes a back edge outside the nodes it passes", () => {
     const obstacle = box(0, 60, 300);
     const { points } = routeEdge(box(0, 120), box(0, 0), false, [obstacle]);
