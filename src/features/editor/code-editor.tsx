@@ -33,6 +33,8 @@ export type CodeEditorHandle = {
   /** Highlights and scrolls to a range of lines, or clears the highlight. */
   reveal: (range: LineRange | null) => void;
   focusLine: (line: number) => void;
+  /** Replaces the whole text as one undoable edit. */
+  setValue: (value: string) => void;
 };
 
 type CodeEditorProps = {
@@ -104,9 +106,19 @@ export function CodeEditor({
       view.dispatch({ selection: EditorSelection.cursor(line.from + indent), scrollIntoView: true });
       view.focus();
     },
+    setValue(value) {
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: value },
+        selection: EditorSelection.cursor(0),
+        scrollIntoView: true,
+      });
+      view.focus();
+    },
   }));
 
-  return <div ref={containerRef} className="h-full overflow-hidden" />;
+  return <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden" />;
 }
 
 function extensions() {

@@ -97,8 +97,8 @@ function layoutComponent(cfg: Cfg): { positions: Positions; width: number; heigh
   return { positions, width, height };
 }
 
-/** Connected subgraphs in the order their first node appears. */
-function components(cfg: Cfg): Cfg[] {
+/** Connected subgraphs (one per scope) in the order their first node appears. */
+export function components(cfg: Cfg): Cfg[] {
   const root = new Map(cfg.nodes.map((node) => [node.id, node.id]));
   const find = (id: string): string => {
     const parent = root.get(id) ?? id;

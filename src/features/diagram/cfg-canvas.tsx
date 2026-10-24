@@ -15,6 +15,7 @@ import {
 } from "@xyflow/react";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import type { Cfg, CfgNode as CfgNodeModel } from "@/features/cfg/build-cfg";
+import type { Diagnostic } from "@/features/cfg/parse";
 import { CfgEdge, type CfgFlowEdge } from "./cfg-edge";
 import { CfgNode, type CfgFlowNode } from "./cfg-node";
 import { nodeBoxes, routeEdges } from "./geometry";
@@ -29,6 +30,8 @@ type CfgCanvasProps = {
   positions: Positions;
   /** Changes when the layout is replaced wholesale; the view then fits the new graph. */
   layoutEpoch: number;
+  /** Nodes built from a line with a problem are marked. */
+  diagnostics: Diagnostic[];
   /** Editor cursor line; nodes covering it are highlighted. */
   activeLine: number | null;
   onMove: (positions: Positions) => void;
@@ -47,6 +50,7 @@ export function CfgCanvas({
   cfg,
   positions,
   layoutEpoch,
+  diagnostics,
   activeLine,
   onMove,
   onCheckpoint,
@@ -68,14 +72,22 @@ export function CfgCanvas({
     return () => cancelAnimationFrame(frame);
   }, [layoutEpoch, fitView]);
 
-  const nodes: CfgFlowNode[] = cfg.nodes.map((node) => ({
-    id: node.id,
-    type: "cfg",
-    position: positions[node.id] ?? { x: 0, y: 0 },
-    ...nodeSize(node),
-    selected: selected.has(node.id),
-    data: { node, active: activeLine !== null && node.line <= activeLine && activeLine <= node.endLine },
-  }));
+  const nodes: CfgFlowNode[] = cfg.nodes.map((node) => {
+    // Start and end nodes stand for the whole scope, not the line they point at.
+    const terminal = node.kind === "start" || node.kind === "end";
+    return {
+      id: node.id,
+      type: "cfg",
+      position: positions[node.id] ?? { x: 0, y: 0 },
+      ...nodeSize(node),
+      selected: selected.has(node.id),
+      data: {
+        node,
+        active: !terminal && covers(node, activeLine),
+        problems: terminal ? [] : diagnostics.filter((d) => covers(node, d.line)),
+      },
+    };
+  });
   const edges: CfgFlowEdge[] = routeEdges(cfg, nodeBoxes(cfg, positions)).map((edge) => ({
     id: edge.id,
     source: edge.source,
@@ -147,12 +159,13 @@ export function CfgCanvas({
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         <Controls showInteractive={false} position="bottom-left" />
         <Panel position="top-right">{children}</Panel>
-        <Panel position="bottom-center" className="pointer-events-none text-xs text-muted-foreground">
-          Drag to select · Scroll to pan · ⌘/Ctrl + scroll to zoom · Double-click a node to jump to its code
-        </Panel>
       </ReactFlow>
     </div>
   );
+}
+
+function covers(node: CfgNodeModel, line: number | null): boolean {
+  return line !== null && node.line <= line && line <= node.endLine;
 }
 
 function movedPositions(changes: NodeChange<CfgFlowNode>[]): Positions {

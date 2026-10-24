@@ -1,6 +1,6 @@
 "use client";
 
-import { CopyIcon, DownloadIcon, WandSparklesIcon } from "lucide-react";
+import { CircleHelpIcon, CopyIcon, DownloadIcon, WandSparklesIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -9,6 +9,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Kbd } from "@/components/ui/kbd";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -77,13 +79,13 @@ export function DiagramToolbar({
       <Tooltip>
         <TooltipTrigger render={<Button variant="ghost" size="sm" onClick={onTidy} />}>
           <WandSparklesIcon data-icon="inline-start" />
-          Tidy up
+          <span className="max-sm:sr-only">Tidy up</span>
         </TooltipTrigger>
         <TooltipContent>Discard manual positions and lay out again</TooltipContent>
       </Tooltip>
       <Button size="sm" onClick={copyImage}>
         <CopyIcon data-icon="inline-start" />
-        Copy image
+        <span className="max-sm:sr-only">Copy image</span>
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Download image" />}>
@@ -96,6 +98,39 @@ export function DiagramToolbar({
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      <Popover>
+        <PopoverTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Diagram controls" />}>
+          <CircleHelpIcon />
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-80 gap-1">
+          <p className="font-medium">Diagram controls</p>
+          <dl className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 text-xs">
+            {CONTROLS.map(([keys, action]) => (
+              <div key={keys.join("+")} className="contents">
+                <dt className="flex gap-1">
+                  {keys.map((key) => (
+                    <Kbd key={key}>{key}</Kbd>
+                  ))}
+                </dt>
+                <dd className="text-muted-foreground">{action}</dd>
+              </div>
+            ))}
+          </dl>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
+
+const CONTROLS: [keys: string[], action: string][] = [
+  [["Drag node"], "Move it; the position is kept while you edit"],
+  [["Drag"], "Select an area"],
+  [["Scroll"], "Pan"],
+  [["Space", "Drag"], "Pan"],
+  [["⌘/Ctrl", "Scroll"], "Zoom"],
+  [["Click"], "Highlight the node's source lines"],
+  [["Double-click"], "Jump to the node's code"],
+  [["⌘/Ctrl", "Z"], "Undo a layout change"],
+  [["⌘/Ctrl", "⇧", "Z"], "Redo"],
+  [["⌘/Ctrl", "A"], "Select all nodes"],
+];

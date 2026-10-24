@@ -62,23 +62,18 @@ export function routeEdge(
     // and come into the loop header from above, where it joins the edge entering the loop.
     // Entering from above keeps the header's side vertices free for its own exits.
     const useLeft = sourceX < targetX - source.width / 2;
-    const s = bottom(source);
     const t = top(target);
-    const below = s.y + LANE_GAP / 2;
     const above = t.y - LANE_GAP;
+    // A branch leaves through a side vertex so its bottom stays free for the other outcome.
+    const s = fromBranch ? (useLeft ? left(source) : right(source)) : bottom(source);
+    const below = fromBranch ? s.y : s.y + LANE_GAP / 2;
     const between = obstacles.filter((o) => o.y < below && o.y + o.height > above);
     const edges = [source, target, ...between];
     const lane = useLeft
       ? Math.min(...edges.map((o) => o.x)) - 2 * LANE_GAP
       : Math.max(...edges.map((o) => o.x + o.width)) + 2 * LANE_GAP;
-    return withLabel([
-      s,
-      { x: s.x, y: below },
-      { x: lane, y: below },
-      { x: lane, y: above },
-      { x: t.x, y: above },
-      t,
-    ]);
+    const start = fromBranch ? [s] : [s, { x: s.x, y: below }];
+    return withLabel([...start, { x: lane, y: below }, { x: lane, y: above }, { x: t.x, y: above }, t]);
   }
 
   return targetX >= sourceX

@@ -242,6 +242,10 @@
   background: color-mix(in oklch, var(--diagram-no) 10%, var(--background));
 }
 
+.has-problem .cfg-shape {
+  stroke: var(--diagram-problem);
+  stroke-dasharray: 2 2;
+}
 .is-active .cfg-shape {
   stroke: var(--diagram-accent);
   stroke-dasharray: 4 3;

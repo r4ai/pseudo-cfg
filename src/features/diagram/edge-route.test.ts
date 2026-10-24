@@ -27,6 +27,13 @@ describe("routeEdge", () => {
   });
 });
 
+describe("routeEdge from a branch", () => {
+  it("leaves a loop back edge through a side vertex, keeping the bottom free", () => {
+    const { points } = routeEdge(box(0, 120), box(0, 0), true, []);
+    expect(points[0]).toEqual({ x: 100, y: 140 });
+  });
+});
+
 describe("arrowhead", () => {
   it("trims the line so it ends at the arrow's base", () => {
     const { line } = arrowhead([
