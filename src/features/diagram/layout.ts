@@ -1,5 +1,5 @@
-import { Graph, layout } from "@dagrejs/dagre";
 import type { Cfg, CfgNode } from "@/features/cfg/build-cfg";
+import { structuredLayout } from "./structured-layout";
 
 export type Point = { x: number; y: number };
 export type Size = { width: number; height: number };
@@ -115,23 +115,7 @@ const SCOPE_GAP = 96;
 const ROW_WIDTH = 1600;
 
 function layoutComponent(cfg: Cfg): { positions: Positions; width: number; height: number } {
-  const graph = new Graph();
-  graph.setGraph({ rankdir: "TB", nodesep: 40, ranksep: 44, marginx: 0, marginy: 0 });
-  graph.setDefaultEdgeLabel(() => ({}));
-  for (const node of cfg.nodes) graph.setNode(node.id, nodeSize(node));
-  for (const edge of cfg.edges) if (!edge.back) graph.setEdge(edge.source, edge.target);
-  layout(graph);
-
-  const positions: Positions = {};
-  let width = 0;
-  let height = 0;
-  for (const node of cfg.nodes) {
-    const { x = 0, y = 0, width: w, height: h } = graph.node(node.id);
-    positions[node.id] = { x: x - w / 2, y: y - h / 2 };
-    width = Math.max(width, x + w / 2);
-    height = Math.max(height, y + h / 2);
-  }
-  return { positions, width, height };
+  return structuredLayout(cfg, nodeSize);
 }
 
 /** Connected subgraphs (one per scope) in the order their first node appears. */

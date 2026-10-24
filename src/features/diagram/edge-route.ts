@@ -21,73 +21,130 @@ const LANE_GAP = 20;
 const FLAT_INSET = 16;
 const LABEL_DISTANCE = 16;
 
+export type RouteOptions = {
+  /**
+   * Which way the edge leaves a branch, so outcomes always sit in the same place:
+   * `yes` (True, next) leaves from the bottom, `no` (False, done) from the right vertex.
+   * Other edges leave from the bottom.
+   */
+  exit?: "yes" | "no" | "plain";
+  /** The target has a flat top, so an edge may enter it off-center to stay straight. */
+  flatTarget?: boolean;
+  /** Loop back edges run up on the left, apart from everything that leaves to the right. */
+  back?: boolean;
+  /** Jumps (break, return) skip whole blocks, so they run outside everything they pass. */
+  outer?: boolean;
+  /** Vertical lanes other edges already use; detours step past them instead of overlapping. */
+  lanes?: Box[];
+};
+
 /**
  * Routes an edge from the nodes' current boxes, so edges stay readable however
  * the user arranges the diagram. Anchors are side midpoints, which coincide with
  * diamond and hexagon vertices, so the same rules work for every shape.
  *
- * @param fromBranch - Branch nodes may leave through their side vertices.
+ * Detours keep to one rule: whatever leaves (False, done, break, return) goes round
+ * on the right, and loop back edges climb on the left.
+ *
  * @param obstacles - Nodes the edge should avoid; `source` and `target` may be among them.
- * @param flatTarget - The target has a flat top, so an edge may enter it off-center to stay straight.
  */
 export function routeEdge(
   source: Box,
   target: Box,
-  fromBranch: boolean,
   obstacles: Box[],
-  flatTarget = false,
+  options: RouteOptions = {},
 ): EdgeGeometry {
+  const { exit = "plain", flatTarget = false, back = false, outer = false, lanes = [] } = options;
   const sourceX = centerX(source);
-  const targetX = centerX(target);
   const others = () => obstacles.filter((o) => o !== source && o !== target);
+  const t = top(target);
 
-  if (target.y >= source.y + source.height) {
-    const spansSource = target.x <= sourceX && sourceX <= target.x + target.width;
-    const straight = target.x + FLAT_INSET <= sourceX && sourceX <= target.x + target.width - FLAT_INSET;
-    const plumb = [bottom(source), { x: sourceX, y: target.y }];
-    if (flatTarget && straight && isClear(plumb, others())) return withLabel(plumb);
-    const down = dogleg(bottom(source), top(target), "vertical");
-    // A branch whose way down is blocked (an if without else, skipping its body) goes round the side.
-    if (!fromBranch || (spansSource && isClear(down, others()))) return withLabel(down);
-    // Leave through the side vertex facing the target so True and False exits stay apart.
-    const toRight = targetX > sourceX;
-    const s = toRight ? right(source) : left(source);
-    const t = top(target);
-    const beyondSide = toRight ? t.x > s.x : t.x < s.x;
-    const direct = [s, { x: t.x, y: s.y }, t];
-    if (beyondSide && isClear(direct, others())) return withLabel(direct);
-    const approach = Math.max(s.y, t.y - LANE_GAP);
-    // Step the lane outwards past any node it would run through on its way down.
-    let lane = s.x + (toRight ? LANE_GAP : -LANE_GAP);
-    const inTheWay = others().filter((o) => o.y < approach && o.y + o.height > s.y);
-    for (let hit = laneHit(lane, inTheWay); hit; hit = laneHit(lane, inTheWay)) {
-      lane = toRight ? hit.x + hit.width + LANE_GAP : hit.x - LANE_GAP;
-    }
-    return withLabel([s, { x: lane, y: s.y }, { x: lane, y: approach }, { x: t.x, y: approach }, t]);
-  }
-
-  if (target.y + target.height <= source.y) {
-    // Loop back edge: drop below the source, climb in a lane outside every node in between,
-    // and come into the loop header from above, where it joins the edge entering the loop.
-    // Entering from above keeps the header's side vertices free for its own exits.
-    const useLeft = sourceX < targetX - source.width / 2;
-    const t = top(target);
+  if (back || target.y + target.height <= source.y) {
+    // Loop back edge: leave below the source (or by the False vertex), climb in a lane left of
+    // every node in between, and come into the loop header from above, where it joins the edge
+    // entering the loop. Entering from above keeps the header's side vertices free for its exits.
+    const s = exit === "no" ? right(source) : bottom(source);
+    // A False exit steps out to the right and drops below its node before turning left.
+    const below = source.y + source.height + LANE_GAP / 2;
     const above = t.y - LANE_GAP;
-    // A branch leaves through a side vertex so its bottom stays free for the other outcome.
-    const s = fromBranch ? (useLeft ? left(source) : right(source)) : bottom(source);
-    const below = fromBranch ? s.y : s.y + LANE_GAP / 2;
     const between = obstacles.filter((o) => o.y < below && o.y + o.height > above);
-    const edges = [source, target, ...between];
-    const lane = useLeft
-      ? Math.min(...edges.map((o) => o.x)) - 2 * LANE_GAP
-      : Math.max(...edges.map((o) => o.x + o.width)) + 2 * LANE_GAP;
-    const start = fromBranch ? [s] : [s, { x: s.x, y: below }];
-    return withLabel([...start, { x: lane, y: below }, { x: lane, y: above }, { x: t.x, y: above }, t]);
+    let lane = Math.min(...[source, target, ...between].map((o) => o.x)) - 2 * LANE_GAP;
+    const taken = lanes.filter((o) => o.y < below && o.y + o.height > above);
+    for (let hit = laneHit(lane, taken); hit; hit = laneHit(lane, taken)) lane = hit.x - LANE_GAP / 2;
+    const turn = exit === "no" ? s.x + LANE_GAP / 2 : s.x;
+    const start = exit === "no" ? [s, { x: turn, y: s.y }] : [s];
+    return withLabel([
+      ...start,
+      { x: turn, y: below },
+      { x: lane, y: below },
+      { x: lane, y: above },
+      { x: t.x, y: above },
+      t,
+    ]);
   }
 
-  return targetX >= sourceX
-    ? withLabel(dogleg(right(source), left(target), "horizontal"))
-    : withLabel(dogleg(left(source), right(target), "horizontal"));
+  if (exit === "no") {
+    // The False exit always leaves to the right; a target further right is reached directly,
+    // one below or to the left by going down a lane on the right.
+    const s = right(source);
+    const direct = [s, { x: t.x, y: s.y }, t];
+    if (t.x > s.x && isClear(direct, others())) return withLabel(direct);
+    return withLabel(detour([s], s.x + LANE_GAP, t, others(), lanes, outer));
+  }
+
+  const straight = target.x + FLAT_INSET <= sourceX && sourceX <= target.x + target.width - FLAT_INSET;
+  const plumb = [bottom(source), { x: sourceX, y: target.y }];
+  if (flatTarget && straight && isClear(plumb, others())) return withLabel(plumb);
+  const down = dogleg(bottom(source), t, "vertical");
+  if (isClear(down, others())) return withLabel(down);
+  // Blocked on the way down (a return skipping the code below): drop out of the bottom and
+  // go round on the right.
+  const s = bottom(source);
+  const drop = { x: s.x, y: s.y + LANE_GAP / 2 };
+  return withLabel(detour([s, drop], source.x + source.width + LANE_GAP, t, others(), lanes, outer));
+}
+
+/**
+ * Runs down a vertical lane from the last of `start`, stepping the lane outwards past any
+ * node it would cross, and comes into `t` from just above it.
+ */
+function detour(
+  start: Point[],
+  lane: number,
+  t: Point,
+  obstacles: Box[],
+  lanes: Box[],
+  outer: boolean,
+): Point[] {
+  const from = start.at(-1) as Point;
+  const approach = Math.max(from.y, t.y - LANE_GAP);
+  const inTheWay = obstacles.filter((o) => o.y < approach && o.y + o.height > from.y);
+  const taken = lanes.filter((o) => o.y < approach && o.y + o.height > from.y);
+  let x = outer ? Math.max(lane, ...inTheWay.map((o) => o.x + o.width + LANE_GAP)) : lane;
+  // Step right past nodes (a full gap) and past lanes in use (half a gap) until clear.
+  for (;;) {
+    const node = laneHit(x, inTheWay);
+    const hit = node ?? laneHit(x, taken);
+    if (!hit) break;
+    x = hit.x + hit.width + (node ? LANE_GAP : LANE_GAP / 2);
+  }
+  return [...start, { x, y: from.y }, { x, y: approach }, { x: t.x, y: approach }, t];
+}
+/** Thin boxes around the vertical segments of a route, for `RouteOptions.lanes`. */
+export function verticalLanes(points: Point[]): Box[] {
+  const boxes: Box[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1] as Point;
+    const b = points[i] as Point;
+    if (Math.abs(a.x - b.x) > 0.5) continue;
+    boxes.push({
+      x: a.x - LANE_GAP / 4,
+      y: Math.min(a.y, b.y),
+      width: LANE_GAP / 2,
+      height: Math.abs(a.y - b.y),
+    });
+  }
+  return boxes;
 }
 
 /** Two-bend connection that splits the distance halfway along `axis`. */
@@ -159,7 +216,6 @@ function isClear(points: Point[], boxes: Box[]): boolean {
 const centerX = (box: Box) => box.x + box.width / 2;
 const top = (box: Box): Point => ({ x: centerX(box), y: box.y });
 const bottom = (box: Box): Point => ({ x: centerX(box), y: box.y + box.height });
-const left = (box: Box): Point => ({ x: box.x, y: box.y + box.height / 2 });
 const right = (box: Box): Point => ({ x: box.x + box.width, y: box.y + box.height / 2 });
 
 const distance = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);

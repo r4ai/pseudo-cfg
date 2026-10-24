@@ -18,6 +18,8 @@ export type CfgEdge = {
   label: string | null;
   /** True for edges that jump back to a loop header. */
   back: boolean;
+  /** True for `break`, `return` and `raise`, which leave the structure they are in. */
+  jump: boolean;
 };
 
 export type Cfg = { nodes: CfgNode[]; edges: CfgEdge[] };
@@ -27,7 +29,7 @@ export type Granularity = "block" | "statement";
 export type BuildResult = { cfg: Cfg; diagnostics: Diagnostic[] };
 
 /** A dangling control-flow exit waiting to be connected to the next node. */
-type Port = { from: string; label: string | null };
+type Port = { from: string; label: string | null; jump?: boolean };
 
 type Loop = { head: string; breaks: Port[] };
 
@@ -110,7 +112,10 @@ class Builder {
         }
         ports = [{ from: open, label: stmt.type === "return" && stmt.raises ? "raise" : null }];
         if (stmt.type === "return") {
-          this.connect(ports, this.exit);
+          this.connect(
+            ports.map((port) => ({ ...port, jump: true })),
+            this.exit,
+          );
           ports = [];
           open = null;
         }
@@ -141,7 +146,7 @@ class Builder {
           leave: "done",
         });
       case "break":
-        if (loop) loop.breaks.push(...ports);
+        if (loop) loop.breaks.push(...ports.map((port) => ({ ...port, jump: true })));
         else this.report(stmt.line, "'break' outside loop");
         return loop ? [] : ports;
       case "continue":
@@ -206,7 +211,9 @@ class Builder {
   }
 
   private connect(ports: Port[], target: string, back = false) {
-    for (const port of ports) this.edges.push({ source: port.from, target, label: port.label, back });
+    for (const port of ports) {
+      this.edges.push({ source: port.from, target, label: port.label, back, jump: port.jump ?? false });
+    }
   }
 
   private report(line: number, message: string) {
