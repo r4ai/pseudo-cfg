@@ -14,10 +14,21 @@ const MIN_WIDTH = 96;
 const GAP = 28;
 const BRANCH_PAD_Y = 22;
 
+/** Wide (CJK, full-width) characters take two monospace columns. */
+const WIDE =
+  /[\u1100-\u115f\u2e80-\u303e\u3041-\u33ff\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{1f300}-\u{1faff}\u{20000}-\u{3fffd}]/u;
+
+/** Display width of a line in monospace columns. */
+export function columns(line: string): number {
+  let width = 0;
+  for (const ch of line) width += WIDE.test(ch) ? 2 : 1;
+  return width;
+}
+
 /** Size of a node as rendered; text is monospace so it can be computed up front. */
 export function nodeSize(node: CfgNode): Size {
   const lines = node.label.split("\n");
-  const textWidth = Math.max(...lines.map((line) => line.length)) * CHAR_WIDTH;
+  const textWidth = Math.max(...lines.map(columns)) * CHAR_WIDTH;
   const textHeight = lines.length * LINE_HEIGHT;
   switch (node.kind) {
     case "start":
@@ -154,12 +165,19 @@ export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cf
 /**
  * Whether too little of the graph survived for the old arrangement to be worth keeping,
  * as after replacing the whole text. Start and end nodes always survive, so they don't count.
+ * A node that kept its id but changed its text (see `reconcile`) is weaker evidence of an
+ * in-place edit than an unchanged one, so it counts half.
  */
 export function mostlyReplaced(prev: Cfg, prevPositions: Positions, next: Cfg): boolean {
-  const prevIds = new Set(prev.nodes.map((node) => node.id));
+  const prevLabels = new Map(prev.nodes.map((node) => [node.id, node.label]));
   const content = next.nodes.filter((node) => node.kind !== "start" && node.kind !== "end");
-  const kept = content.filter((node) => prevIds.has(node.id) && prevPositions[node.id]);
-  return content.length === 0 || 2 * kept.length < content.length;
+  let score = 0;
+  for (const node of content) {
+    const label = prevLabels.get(node.id);
+    if (label === undefined || !prevPositions[node.id]) continue;
+    score += label === node.label ? 2 : 1;
+  }
+  return content.length === 0 || score < content.length;
 }
 
 type Rect = { id: string; x: number; y: number; width: number; height: number };

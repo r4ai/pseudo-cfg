@@ -28,14 +28,21 @@ const COLORS = {
  */
 export function diagramToSvg(cfg: Cfg, positions: Positions): string {
   const boxes = nodeBoxes(cfg, positions);
-  const all = [...boxes.values()];
+  const routed = routeEdges(cfg, boxes);
+  // Back edges run outside the nodes, so the bounds include every edge point and label.
+  const all = [
+    ...boxes.values(),
+    ...routed.flatMap(({ geometry }) => [
+      ...geometry.points.map((p) => ({ ...p, width: 0, height: 0 })),
+      { x: geometry.labelAt.x - 24, y: geometry.labelAt.y - 8, width: 48, height: 16 },
+    ]),
+  ];
   const minX = Math.min(...all.map((b) => b.x)) - PADDING;
   const minY = Math.min(...all.map((b) => b.y)) - PADDING;
   const width = Math.max(...all.map((b) => b.x + b.width)) + PADDING - minX;
   const height = Math.max(...all.map((b) => b.y + b.height)) + PADDING - minY;
 
-  const routed = routeEdges(cfg, boxes);
-  const edges = routed.map(({ geometry, label, back }) => {
+  const edges = routed.map(({ geometry, back }) => {
     const { line, head } = arrowhead(geometry.points);
     const dash = back ? ` stroke-dasharray="5 4"` : "";
     return `<path d="${roundedPath(line)}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"${dash}/><polygon points="${head}" fill="${COLORS.edge}"/>`;
@@ -45,9 +52,9 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
     if (!label) return [];
     const { x, y } = geometry.labelAt;
     const color = COLORS.label[toneOf(label)];
-    const width = label.length * 6.5 + 12;
+    const pill = label.length * 6.5 + 12;
     return [
-      `<rect x="${x - width / 2}" y="${y - 8}" width="${width}" height="16" rx="8" fill="${color.fill}" stroke="${color.stroke}"/>` +
+      `<rect x="${x - pill / 2}" y="${y - 8}" width="${pill}" height="16" rx="8" fill="${color.fill}" stroke="${color.stroke}"/>` +
         `<text x="${x}" y="${y}" fill="${color.text}" font-size="11" font-weight="500" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`,
     ];
   });

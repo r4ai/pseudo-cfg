@@ -12,4 +12,13 @@ describe("diagramToSvg", () => {
     expect(svg).toContain("x = &#39;&#60;tag&#62;&#39;");
     expect(svg).not.toContain("<tag>");
   });
+
+  it("fits loop back edges inside the image", () => {
+    const { cfg } = buildCfg("while ready:\n    work()\nafter()", "block");
+    const positions = autoLayout(cfg);
+    const svg = diagramToSvg(cfg, positions);
+    const [x, , width] = (/viewBox="([^"]+)"/.exec(svg)?.[1] ?? "").split(" ").map(Number);
+    const right = Math.max(...cfg.nodes.map((n) => positions[n.id]?.x ?? 0));
+    expect((x ?? 0) + (width ?? 0)).toBeGreaterThan(right + 140);
+  });
 });

@@ -10,11 +10,14 @@ export type WorkspaceState = {
   diagnostics: Diagnostic[];
   positions: Positions;
   /** Layout history for undo/redo in the diagram; the editor keeps its own text history. */
-  undo: Positions[];
-  redo: Positions[];
+  undo: LayoutSnapshot[];
+  redo: LayoutSnapshot[];
   /** Bumped whenever the whole layout is replaced, so the view can fit the new graph. */
   layoutEpoch: number;
 };
+
+/** A diagram arrangement. The graph is kept so a granularity switch can be undone with its ids. */
+type LayoutSnapshot = Pick<WorkspaceState, "granularity" | "cfg" | "positions">;
 
 /** What is persisted between visits. Ids in `cfg` let saved positions survive a reload. */
 export type SavedWorkspace = Pick<WorkspaceState, "source" | "granularity" | "cfg" | "positions">;
@@ -75,18 +78,25 @@ function relaid(state: WorkspaceState): WorkspaceState {
   return { ...state, positions: autoLayout(state.cfg), layoutEpoch: state.layoutEpoch + 1 };
 }
 
+const snapshotOf = ({ granularity, cfg, positions }: WorkspaceState): LayoutSnapshot => ({
+  granularity,
+  cfg,
+  positions,
+});
+
 function withCheckpoint(state: WorkspaceState): WorkspaceState {
-  return { ...state, undo: [...state.undo, state.positions].slice(-HISTORY_LIMIT), redo: [] };
+  return { ...state, undo: [...state.undo, snapshotOf(state)].slice(-HISTORY_LIMIT), redo: [] };
 }
 
 function travel(state: WorkspaceState, from: "undo" | "redo", to: "undo" | "redo"): WorkspaceState {
   const snapshot = state[from].at(-1);
   if (!snapshot) return state;
-  return {
-    ...state,
-    [from]: state[from].slice(0, -1),
-    [to]: [...state[to], state.positions],
-    // Nodes added after the snapshot keep their current place.
-    positions: { ...state.positions, ...snapshot },
-  };
+  const moved = { ...state, [from]: state[from].slice(0, -1), [to]: [...state[to], snapshotOf(state)] };
+  if (snapshot.granularity !== state.granularity) {
+    // Rebuild against the snapshot's graph so its ids, and so its positions, carry over.
+    const restored = { ...moved, cfg: snapshot.cfg, positions: snapshot.positions };
+    return rebuild(restored, state.source, snapshot.granularity);
+  }
+  // Nodes added after the snapshot keep their current place.
+  return { ...moved, positions: { ...state.positions, ...snapshot.positions } };
 }

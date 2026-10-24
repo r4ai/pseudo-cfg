@@ -34,3 +34,11 @@ describe("placeIncrementally", () => {
     expect(positions[idOf("a()")]).toEqual(layout[idOf("a()")]);
   });
 });
+
+const node = (label: string) => ({ id: "n", kind: "block" as const, label, line: 1, endLine: 1 });
+
+describe("nodeSize", () => {
+  it("gives wide characters two columns", () => {
+    expect(nodeSize(node("日本語の長い文字列")).width).toBe(nodeSize(node("x".repeat(18))).width);
+  });
+});
