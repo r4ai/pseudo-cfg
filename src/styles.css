@@ -102,6 +102,9 @@
   --diagram-terminal: oklch(0.95 0 0);
   --diagram-edge: oklch(0.5 0 0);
   --diagram-accent: oklch(0.55 0.2 260);
+  --diagram-yes: oklch(0.5 0.13 150);
+  --diagram-no: oklch(0.55 0.18 30);
+  --diagram-problem: oklch(0.6 0.2 30);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -157,6 +160,9 @@
     --diagram-terminal: oklch(0.27 0 0);
     --diagram-edge: oklch(0.7 0 0);
     --diagram-accent: oklch(0.7 0.15 260);
+    --diagram-yes: oklch(0.75 0.14 150);
+    --diagram-no: oklch(0.72 0.15 35);
+    --diagram-problem: oklch(0.7 0.18 30);
   }
 }
 
@@ -207,8 +213,33 @@
 .cfg-edge {
   stroke-width: 1.5;
 }
+.cfg-edge.is-back {
+  stroke-dasharray: 5 4;
+}
 .cfg-arrowhead {
   fill: var(--diagram-edge);
+}
+.cfg-edge-label {
+  position: absolute;
+  pointer-events: none;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.cfg-edge-label.is-yes {
+  color: var(--diagram-yes);
+  border-color: color-mix(in oklch, var(--diagram-yes) 35%, transparent);
+  background: color-mix(in oklch, var(--diagram-yes) 10%, var(--background));
+}
+.cfg-edge-label.is-no {
+  color: var(--diagram-no);
+  border-color: color-mix(in oklch, var(--diagram-no) 35%, transparent);
+  background: color-mix(in oklch, var(--diagram-no) 10%, var(--background));
 }
 
 .is-active .cfg-shape {

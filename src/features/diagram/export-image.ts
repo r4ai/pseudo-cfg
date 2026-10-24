@@ -1,5 +1,5 @@
 import type { Cfg } from "@/features/cfg/build-cfg";
-import { arrowhead, roundedPath } from "./edge-route";
+import { arrowhead, roundedPath, toneOf } from "./edge-route";
 import { nodeBoxes, routeEdges } from "./geometry";
 import type { Positions } from "./layout";
 import { shapeOf } from "./shapes";
@@ -12,9 +12,13 @@ const FONT = "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospac
 const COLORS = {
   background: "#ffffff",
   text: "#171717",
-  muted: "#737373",
   stroke: "#7a7a7a",
   edge: "#5c5c5c",
+  label: {
+    yes: { text: "#1d7a46", fill: "#ecf7f0", stroke: "#a8d9bb" },
+    no: { text: "#b4441f", fill: "#fdf0eb", stroke: "#f0b9a5" },
+    plain: { text: "#737373", fill: "#ffffff", stroke: "#e5e5e5" },
+  },
   fill: { start: "#f2f2f2", end: "#f2f2f2", block: "#ffffff", branch: "#fdf6e3", loop: "#eef4fd" },
 } as const;
 
@@ -30,14 +34,22 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
   const width = Math.max(...all.map((b) => b.x + b.width)) + PADDING - minX;
   const height = Math.max(...all.map((b) => b.y + b.height)) + PADDING - minY;
 
-  const edges = routeEdges(cfg, boxes).map(({ geometry, label }) => {
+  const routed = routeEdges(cfg, boxes);
+  const edges = routed.map(({ geometry, label, back }) => {
     const { line, head } = arrowhead(geometry.points);
+    const dash = back ? ` stroke-dasharray="5 4"` : "";
+    return `<path d="${roundedPath(line)}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"${dash}/><polygon points="${head}" fill="${COLORS.edge}"/>`;
+  });
+  // Labels go on top of every edge, as they do on screen.
+  const labels = routed.flatMap(({ geometry, label }) => {
+    if (!label) return [];
     const { x, y } = geometry.labelAt;
-    const text = label
-      ? `<rect x="${x - label.length * 3.5 - 4}" y="${y - 8}" width="${label.length * 7 + 8}" height="16" rx="4" fill="${COLORS.background}"/>` +
-        `<text x="${x}" y="${y}" fill="${COLORS.muted}" font-size="11" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`
-      : "";
-    return `<path d="${roundedPath(line)}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"/><polygon points="${head}" fill="${COLORS.edge}"/>${text}`;
+    const color = COLORS.label[toneOf(label)];
+    const width = label.length * 6.5 + 12;
+    return [
+      `<rect x="${x - width / 2}" y="${y - 8}" width="${width}" height="16" rx="8" fill="${color.fill}" stroke="${color.stroke}"/>` +
+        `<text x="${x}" y="${y}" fill="${color.text}" font-size="11" font-weight="500" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`,
+    ];
   });
 
   const nodes = cfg.nodes.map((node) => {
@@ -65,6 +77,7 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
     `<rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="${COLORS.background}"/>`,
     ...edges,
     ...nodes,
+    ...labels,
     "</svg>",
   ].join("");
 }

@@ -12,6 +12,7 @@ const PAD_X = 14;
 const PAD_Y = 10;
 const MIN_WIDTH = 96;
 const GAP = 28;
+const BRANCH_PAD_Y = 22;
 
 /** Size of a node as rendered; text is monospace so it can be computed up front. */
 export function nodeSize(node: CfgNode): Size {
@@ -24,8 +25,12 @@ export function nodeSize(node: CfgNode): Size {
       return { width: Math.max(MIN_WIDTH, textWidth + 40), height: 36 };
     case "block":
       return { width: Math.max(MIN_WIDTH, textWidth + 2 * PAD_X), height: textHeight + 2 * PAD_Y };
-    case "branch":
-      return { width: Math.max(MIN_WIDTH, 2 * textWidth + 40), height: 2 * textHeight + 24 };
+    case "branch": {
+      // A diamond whose inscribed rectangle holds the text: w/W + h/H <= 1 for half-sizes.
+      const height = textHeight + 2 * BRANCH_PAD_Y;
+      const width = (textWidth + 2 * PAD_X) / (1 - textHeight / height);
+      return { width: Math.max(MIN_WIDTH, Math.ceil(width)), height };
+    }
     case "loop": {
       const height = textHeight + 2 * PAD_Y;
       return { width: Math.max(MIN_WIDTH, textWidth + 2 * PAD_X + height), height };

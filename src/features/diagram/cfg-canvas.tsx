@@ -81,7 +81,7 @@ export function CfgCanvas({
     source: edge.source,
     target: edge.target,
     type: "cfg",
-    data: { label: edge.label, geometry: edge.geometry },
+    data: { label: edge.label, back: edge.back, geometry: edge.geometry },
   }));
 
   const onNodesChange: OnNodesChange<CfgFlowNode> = (changes) => {

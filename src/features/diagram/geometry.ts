@@ -22,7 +22,9 @@ export function routeEdges(cfg: Cfg, boxes: Map<string, Box>): RoutedEdge[] {
     const obstacles = [...boxes]
       .filter(([id]) => id !== edge.source && id !== edge.target)
       .map(([, box]) => box);
-    const geometry = routeEdge(source, target, kind === "branch" || kind === "loop", obstacles);
+    const targetKind = kinds.get(edge.target);
+    const fromBranch = kind === "branch" || kind === "loop";
+    const geometry = routeEdge(source, target, fromBranch, obstacles, targetKind === "block");
     return [{ ...edge, id: `${edge.source}>${edge.target}#${index}`, geometry }];
   });
 }

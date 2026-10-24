@@ -23,7 +23,7 @@ describe("routeEdge", () => {
     const { points } = routeEdge(box(0, 120), box(0, 0), false, [obstacle]);
     const laneX = Math.max(...points.map((p) => p.x));
     expect(laneX).toBeGreaterThan(obstacle.x + obstacle.width);
-    expect(points.at(-1)).toEqual({ x: 100, y: 20 });
+    expect(points.at(-1)).toEqual({ x: 50, y: 0 });
   });
 });
 
