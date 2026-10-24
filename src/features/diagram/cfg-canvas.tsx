@@ -22,7 +22,11 @@ import { nodeBoxes, routeEdges } from "./geometry";
 import { nodeSize, type Positions } from "./layout";
 
 const nodeTypes = { cfg: CfgNode };
-const FIT_VIEW_OPTIONS = { padding: 0.2, maxZoom: 1 };
+/** Leaves room for the toolbar above and the zoom controls on the left. */
+const FIT_VIEW_OPTIONS = {
+  padding: { top: "72px", right: "32px", bottom: "32px", left: "64px" },
+  maxZoom: 1,
+} as const;
 /** Arrow key presses closer together than this (ms) are undone together. */
 const KEYBOARD_MOVE_GAP = 1000;
 const edgeTypes = { cfg: CfgEdge };
@@ -176,7 +180,7 @@ export function CfgCanvas({
         onlyRenderVisibleElements
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-        <Controls showInteractive={false} position="bottom-left" />
+        <Controls showInteractive={false} position="bottom-left" fitViewOptions={FIT_VIEW_OPTIONS} />
         <Panel position="top-right">{children}</Panel>
       </ReactFlow>
     </div>
