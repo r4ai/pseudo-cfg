@@ -27,7 +27,7 @@ const LABEL_DISTANCE = 16;
  * diamond and hexagon vertices, so the same rules work for every shape.
  *
  * @param fromBranch - Branch nodes may leave through their side vertices.
- * @param obstacles - Other nodes; edges avoid running through them.
+ * @param obstacles - Nodes the edge should avoid; `source` and `target` may be among them.
  * @param flatTarget - The target has a flat top, so an edge may enter it off-center to stay straight.
  */
 export function routeEdge(
@@ -39,6 +39,7 @@ export function routeEdge(
 ): EdgeGeometry {
   const sourceX = centerX(source);
   const targetX = centerX(target);
+  const others = () => obstacles.filter((o) => o !== source && o !== target);
 
   if (target.y >= source.y + source.height) {
     const spansSource = target.x <= sourceX && sourceX <= target.x + target.width;
@@ -51,7 +52,7 @@ export function routeEdge(
     const t = top(target);
     const beyondSide = toRight ? t.x > s.x : t.x < s.x;
     const direct = [s, { x: t.x, y: s.y }, t];
-    if (beyondSide && isClear(direct, obstacles)) return withLabel(direct);
+    if (beyondSide && isClear(direct, others())) return withLabel(direct);
     const lane = s.x + (toRight ? LANE_GAP : -LANE_GAP);
     const approach = Math.max(s.y, t.y - LANE_GAP);
     return withLabel([s, { x: lane, y: s.y }, { x: lane, y: approach }, { x: t.x, y: approach }, t]);

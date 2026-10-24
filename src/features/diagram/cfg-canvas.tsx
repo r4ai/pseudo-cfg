@@ -155,6 +155,7 @@ export function CfgCanvas({
         fitView
         fitViewOptions={FIT_VIEW_OPTIONS}
         minZoom={0.1}
+        onlyRenderVisibleElements
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         <Controls showInteractive={false} position="bottom-left" />

@@ -2,7 +2,7 @@
 
 import { ReactFlowProvider } from "@xyflow/react";
 import { BookOpenIcon, ChevronDownIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { startTransition, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -60,7 +60,8 @@ export function Workspace() {
             ref={editor}
             defaultValue={state.source}
             diagnostics={state.diagnostics}
-            onChange={(source) => dispatch({ type: "edit", source })}
+            // The editor owns its text, so the graph can catch up without delaying keystrokes.
+            onChange={(source) => startTransition(() => dispatch({ type: "edit", source }))}
             onCursorLineChange={setCursorLine}
           />
           <footer className="flex h-7 shrink-0 items-center justify-between gap-3 border-t px-3 text-xs">

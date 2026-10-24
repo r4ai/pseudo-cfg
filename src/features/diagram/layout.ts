@@ -128,9 +128,15 @@ export function components(cfg: Cfg): Cfg[] {
  * node are pushed down to make room, the way inserting a line pushes text down.
  */
 export function placeIncrementally(prev: Cfg, prevPositions: Positions, next: Cfg): Positions {
-  const fresh = autoLayout(next);
-  if (mostlyReplaced(prev, prevPositions, next)) return fresh;
+  if (mostlyReplaced(prev, prevPositions, next)) return autoLayout(next);
   const prevById = new Map(prev.nodes.map((node) => [node.id, node]));
+  // Auto layout positions are only used to place new nodes relative to their scope, so only
+  // scopes that gained a node are laid out; edits within a statement lay out nothing.
+  const isNew = (node: CfgNode) => !prevById.has(node.id) || !prevPositions[node.id];
+  const fresh: Positions = {};
+  for (const scope of components(next)) {
+    if (scope.nodes.some(isNew)) Object.assign(fresh, layoutComponent(scope).positions);
+  }
   const kept = next.nodes.filter((node) => prevPositions[node.id] && prevById.has(node.id));
 
   const offsetOf = (id: string): Point | null => {
