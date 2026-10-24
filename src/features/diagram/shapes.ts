@@ -11,7 +11,8 @@ export function shapeOf(kind: CfgNodeKind, width: number, height: number, multil
   switch (kind) {
     case "start":
     case "end":
-      return { type: "rect", rx: height / 2 };
+      // A pill when it holds one line; a long, wrapped signature keeps the same end radius.
+      return { type: "rect", rx: Math.min(height / 2, 18) };
     case "block":
       return { type: "rect", rx: 6 };
     case "branch":

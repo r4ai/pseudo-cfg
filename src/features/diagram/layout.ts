@@ -65,7 +65,7 @@ export function nodeSize(node: CfgNode): Size {
   switch (node.kind) {
     case "start":
     case "end":
-      return { width: Math.max(MIN_WIDTH, textWidth + 40), height: 36 };
+      return { width: Math.max(MIN_WIDTH, textWidth + 40), height: Math.max(36, textHeight + 16) };
     case "block":
       return { width: Math.max(MIN_WIDTH, textWidth + 2 * PAD_X), height: textHeight + 2 * PAD_Y };
     case "branch": {

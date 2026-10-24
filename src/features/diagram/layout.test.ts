@@ -75,6 +75,17 @@ describe("placeIncrementally", () => {
 const node = (label: string) => ({ id: "n", kind: "block" as const, label, line: 1, endLine: 1 });
 
 describe("nodeSize", () => {
+  it("grows a start node to fit a wrapped signature", () => {
+    const start = {
+      id: "s",
+      kind: "start" as const,
+      label: `def f(${"arg, ".repeat(30)})`,
+      line: 1,
+      endLine: 1,
+    };
+    expect(nodeSize(start).height).toBe(displayLines(start.label).length * 20 + 16);
+  });
+
   it("gives wide characters two columns", () => {
     expect(nodeSize(node("日本語の長い文字列")).width).toBe(nodeSize(node("x".repeat(18))).width);
   });
