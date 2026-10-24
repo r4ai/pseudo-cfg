@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactFlowProvider } from "@xyflow/react";
-import { BookOpenIcon, ChevronDownIcon } from "lucide-react";
+import { BookOpenIcon, ChevronDownIcon, LinkIcon } from "lucide-react";
 import { startTransition, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,11 +13,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { toast } from "@/components/ui/toast";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CfgCanvas } from "@/features/diagram/cfg-canvas";
 import { DiagramToolbar } from "@/features/diagram/diagram-toolbar";
 import { CodeEditor, type CodeEditorHandle } from "@/features/editor/code-editor";
 import { ProblemsStatus } from "./problems-status";
 import { EXAMPLES } from "./sample";
+import { shareUrl } from "./share";
 import { useMediaQuery } from "./use-media-query";
 import { useWorkspace } from "./use-workspace";
 
@@ -29,12 +32,41 @@ export function Workspace() {
   const narrow = useMediaQuery("(max-width: 767px)");
   const orientation = narrow ? "vertical" : "horizontal";
 
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl(state.source, location.href));
+      toast.add({
+        title: "Link copied",
+        description: "Anyone with the link sees this code.",
+        type: "success",
+      });
+    } catch (error) {
+      const description = error instanceof Error ? error.message : String(error);
+      toast.add({ title: "Could not copy the link", description, type: "error" });
+    }
+  };
+
   return (
     <ResizablePanelGroup orientation={orientation} className="min-h-0 flex-1">
       <ResizablePanel defaultSize={narrow ? "45%" : "40%"} minSize="20%">
         <section aria-label="Pseudocode editor" className="flex h-full flex-col">
-          <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b pr-1.5 pl-3">
-            <h2 className="text-xs font-medium text-muted-foreground">Pseudocode</h2>
+          <div className="flex h-9 shrink-0 items-center gap-1 border-b pr-1.5 pl-3">
+            <h2 className="mr-auto text-xs font-medium text-muted-foreground">Pseudocode</h2>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Copy link to this code"
+                    onClick={copyLink}
+                  />
+                }
+              >
+                <LinkIcon />
+              </TooltipTrigger>
+              <TooltipContent>Copy a link that opens this code</TooltipContent>
+            </Tooltip>
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="ghost" size="xs" />}>
                 <BookOpenIcon data-icon="inline-start" />
