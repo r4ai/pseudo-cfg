@@ -57,7 +57,7 @@ export function DiagramToolbar({
     );
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border bg-background/90 p-1 shadow-sm backdrop-blur">
+    <div className="flex min-w-0 items-center gap-1">
       <ToggleGroup
         size="sm"
         value={[granularity]}

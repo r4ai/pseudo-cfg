@@ -22,11 +22,8 @@ import { nodeBoxes, routeEdges } from "./geometry";
 import { nodeSize, type Positions } from "./layout";
 
 const nodeTypes = { cfg: CfgNode };
-/** Leaves room for the toolbar above and the zoom controls on the left. */
-const FIT_VIEW_OPTIONS = {
-  padding: { top: "72px", right: "32px", bottom: "32px", left: "64px" },
-  maxZoom: 1,
-} as const;
+/** Enough margin that edges running round the graph and the zoom controls stay clear. */
+const FIT_VIEW_OPTIONS = { padding: "48px", maxZoom: 1 } as const;
 /** Arrow key presses closer together than this (ms) are undone together. */
 const KEYBOARD_MOVE_GAP = 1000;
 const edgeTypes = { cfg: CfgEdge };
@@ -47,7 +44,7 @@ type CfgCanvasProps = {
   onRedo: () => void;
   onSelectNode: (node: CfgNodeModel | null) => void;
   onOpenNode: (node: CfgNodeModel) => void;
-  /** Floating toolbar shown in the top-right corner. */
+  /** Toolbar shown in the bar above the canvas. */
   children?: ReactNode;
 };
 
@@ -164,53 +161,59 @@ export function CfgCanvas({
   };
 
   return (
-    // Takes focus on click so canvas shortcuts don't fire while typing in the editor.
-    // `application` is the ARIA role for widgets with their own keyboard model; jsx-a11y does not list it.
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
-    <div
-      role="application"
-      aria-label="Control-flow graph canvas"
-      className="cfg-canvas size-full outline-none"
-      tabIndex={-1}
-      onKeyDown={onKeyDown}
-    >
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        onNodesChange={onNodesChange}
-        onNodeDragStart={startDrag}
-        onNodeDragStop={stopDrag}
-        onSelectionDragStart={startDrag}
-        onSelectionDragStop={stopDrag}
-        onNodeDoubleClick={(_, node) => onOpenNode(node.data.node)}
-        colorMode="system"
-        nodesConnectable={false}
-        edgesFocusable={false}
-        deleteKeyCode={null}
-        selectionOnDrag
-        selectionMode={SelectionMode.Partial}
-        panOnDrag={[1, 2]}
-        panOnScroll
-        snapToGrid
-        snapGrid={[4, 4]}
-        fitView
-        fitViewOptions={FIT_VIEW_OPTIONS}
-        minZoom={0.1}
+    <div className="flex size-full flex-col">
+      {/* The toolbar has its own bar so it never covers the graph, however small the canvas. */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b pr-1.5 pl-3">
+        <h2 className="mr-auto text-xs font-medium text-muted-foreground max-sm:sr-only">Control flow</h2>
+        {children}
+      </div>
+      {/* Takes focus on click so canvas shortcuts don't fire while typing in the editor.
+          `application` is the ARIA role for widgets with their own keyboard model; jsx-a11y does not list it. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+      <div
+        role="application"
+        aria-label="Control-flow graph canvas"
+        className="cfg-canvas min-h-0 flex-1 outline-none"
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-        <Controls showInteractive={false} position="bottom-left" fitViewOptions={FIT_VIEW_OPTIONS} />
-        <Panel position="top-right">{children}</Panel>
-        {empty && (
-          <Panel
-            position="top-center"
-            className="pointer-events-none !top-1/3 text-center text-sm text-muted-foreground"
-          >
-            Type pseudocode on the left to see its control flow here.
-          </Panel>
-        )}
-      </ReactFlow>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          onNodesChange={onNodesChange}
+          onNodeDragStart={startDrag}
+          onNodeDragStop={stopDrag}
+          onSelectionDragStart={startDrag}
+          onSelectionDragStop={stopDrag}
+          onNodeDoubleClick={(_, node) => onOpenNode(node.data.node)}
+          colorMode="system"
+          nodesConnectable={false}
+          edgesFocusable={false}
+          deleteKeyCode={null}
+          selectionOnDrag
+          selectionMode={SelectionMode.Partial}
+          panOnDrag={[1, 2]}
+          panOnScroll
+          snapToGrid
+          snapGrid={[4, 4]}
+          fitView
+          fitViewOptions={FIT_VIEW_OPTIONS}
+          minZoom={0.1}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+          <Controls showInteractive={false} position="bottom-left" fitViewOptions={FIT_VIEW_OPTIONS} />
+          {empty && (
+            <Panel
+              position="top-center"
+              className="pointer-events-none !top-1/3 text-center text-sm text-muted-foreground"
+            >
+              Type pseudocode on the left to see its control flow here.
+            </Panel>
+          )}
+        </ReactFlow>
+      </div>
     </div>
   );
 }
