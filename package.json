@@ -58,7 +58,7 @@
     "oxlint": "1.88.0",
     "react-doctor": "0.9.18",
     "tailwindcss": "4.3.3",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vitest": "5.0.5",
     "wrangler": "4.151.1"
   },
