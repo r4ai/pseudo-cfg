@@ -89,20 +89,32 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
   ].join("");
 }
 
-/** Rasterises an SVG document at twice its size for crisp pasting. */
+/**
+ * Rasterises an SVG document at twice its size for crisp pasting, scaling down
+ * for diagrams too large for a canvas.
+ */
 export async function svgToPng(svg: string): Promise<Blob> {
   const image = new Image();
   image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   await image.decode();
   const canvas = document.createElement("canvas");
-  canvas.width = image.naturalWidth * PIXEL_RATIO;
-  canvas.height = image.naturalHeight * PIXEL_RATIO;
+  const ratio = pixelRatio(image.naturalWidth, image.naturalHeight);
+  canvas.width = Math.round(image.naturalWidth * ratio);
+  canvas.height = Math.round(image.naturalHeight * ratio);
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas is not available");
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   return new Promise((resolve, reject) =>
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Could not encode PNG"))), "image/png"),
   );
+}
+
+/** Browsers refuse canvases beyond about 16k pixels a side or 268M pixels in total. */
+const MAX_SIDE = 16_384;
+const MAX_AREA = 100_000_000;
+
+export function pixelRatio(width: number, height: number): number {
+  return Math.min(PIXEL_RATIO, MAX_SIDE / width, MAX_SIDE / height, Math.sqrt(MAX_AREA / (width * height)));
 }
 
 /** Writes a PNG to the clipboard. The blob is passed as a promise so Safari keeps the user gesture. */

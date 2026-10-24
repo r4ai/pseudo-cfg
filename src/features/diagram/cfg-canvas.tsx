@@ -23,6 +23,8 @@ import { nodeSize, type Positions } from "./layout";
 
 const nodeTypes = { cfg: CfgNode };
 const FIT_VIEW_OPTIONS = { padding: 0.2, maxZoom: 1 };
+/** Arrow key presses closer together than this (ms) are undone together. */
+const KEYBOARD_MOVE_GAP = 1000;
 const edgeTypes = { cfg: CfgEdge };
 
 type CfgCanvasProps = {
@@ -96,9 +98,19 @@ export function CfgCanvas({
     data: { label: edge.label, back: edge.back, geometry: edge.geometry },
   }));
 
+  const dragging = useRef(false);
+  const lastKeyboardMove = useRef(0);
+
   const onNodesChange: OnNodesChange<CfgFlowNode> = (changes) => {
     const moved = movedPositions(changes);
-    if (Object.keys(moved).length > 0) onMove(moved);
+    if (Object.keys(moved).length > 0) {
+      // Moves outside a drag come from the arrow keys; a burst of them is one undo step.
+      if (!dragging.current) {
+        if (Date.now() - lastKeyboardMove.current > KEYBOARD_MOVE_GAP) onCheckpoint();
+        lastKeyboardMove.current = Date.now();
+      }
+      onMove(moved);
+    }
     const nextSelected = applySelection(selected, changes);
     if (nextSelected === selected) return;
     setSelected(nextSelected);
@@ -140,7 +152,13 @@ export function CfgCanvas({
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
-        onNodeDragStart={onCheckpoint}
+        onNodeDragStart={() => {
+          dragging.current = true;
+          onCheckpoint();
+        }}
+        onNodeDragStop={() => {
+          dragging.current = false;
+        }}
         onNodeDoubleClick={(_, node) => onOpenNode(node.data.node)}
         colorMode="system"
         nodesConnectable={false}
