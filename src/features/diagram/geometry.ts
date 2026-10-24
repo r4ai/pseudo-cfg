@@ -1,0 +1,28 @@
+import type { Cfg, CfgEdge } from "@/features/cfg/build-cfg";
+import { type Box, type EdgeGeometry, routeEdge } from "./edge-route";
+import { nodeSize, type Positions } from "./layout";
+
+export type RoutedEdge = CfgEdge & { id: string; geometry: EdgeGeometry };
+
+/** Box of every node at its current position. */
+export function nodeBoxes(cfg: Cfg, positions: Positions): Map<string, Box> {
+  return new Map(
+    cfg.nodes.map((node) => [node.id, { ...(positions[node.id] ?? { x: 0, y: 0 }), ...nodeSize(node) }]),
+  );
+}
+
+/** Routes every edge against the current node boxes. */
+export function routeEdges(cfg: Cfg, boxes: Map<string, Box>): RoutedEdge[] {
+  const kinds = new Map(cfg.nodes.map((n) => [n.id, n.kind]));
+  return cfg.edges.flatMap((edge, index) => {
+    const source = boxes.get(edge.source);
+    const target = boxes.get(edge.target);
+    if (!source || !target) return [];
+    const kind = kinds.get(edge.source);
+    const obstacles = [...boxes]
+      .filter(([id]) => id !== edge.source && id !== edge.target)
+      .map(([, box]) => box);
+    const geometry = routeEdge(source, target, kind === "branch" || kind === "loop", obstacles);
+    return [{ ...edge, id: `${edge.source}>${edge.target}#${index}`, geometry }];
+  });
+}

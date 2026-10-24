@@ -1,0 +1,27 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Matches minimumReleaseAge in pnpm-workspace.yaml.
+    cooldown:
+      default-days: 7
+    groups:
+      codemirror:
+        patterns: ["@codemirror/*", "@lezer/*"]
+      react:
+        patterns: ["react", "react-dom", "react-server-dom-webpack", "@types/react", "@types/react-dom"]
+      tooling:
+        dependency-type: development
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

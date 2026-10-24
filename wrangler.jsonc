@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pseudo-cfg",
+  "compatibility_date": "2026-10-01",
+  // Static assets only: no Worker script runs, so there is no server-side attack surface.
+  "assets": {
+    "directory": "./dist/public",
+    "not_found_handling": "404-page",
+  },
+  "workers_dev": true,
+  "preview_urls": false,
+}

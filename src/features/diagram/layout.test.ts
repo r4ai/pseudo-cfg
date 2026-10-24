@@ -1,0 +1,36 @@
+import { describe, expect, it } from "vitest";
+import { buildCfg } from "@/features/cfg/build-cfg";
+import { reconcile } from "@/features/cfg/reconcile";
+import { autoLayout, nodeSize, placeIncrementally } from "./layout";
+
+const counter = () => {
+  let n = 0;
+  return () => `id${n++}`;
+};
+
+describe("placeIncrementally", () => {
+  const prev = reconcile({ nodes: [], edges: [] }, buildCfg("a()\nb()\nc()", "statement").cfg, counter());
+  const moved = { ...autoLayout(prev) };
+  const idOf = (label: string, cfg = prev) => cfg.nodes.find((n) => n.label === label)?.id as string;
+  moved[idOf("b()")] = { x: 500, y: 123 };
+
+  it("keeps positions of surviving nodes, including manually moved ones", () => {
+    const next = reconcile(prev, buildCfg("a()\nb()\nc()\nd()", "statement").cfg, () => "fresh");
+    const positions = placeIncrementally(prev, moved, next);
+    expect(positions[idOf("b()")]).toEqual({ x: 500, y: 123 });
+    expect(positions[idOf("a()")]).toEqual(moved[idOf("a()")]);
+  });
+
+  it("pushes following nodes down to make room for an inserted node", () => {
+    const layout = autoLayout(prev);
+    const next = reconcile(prev, buildCfg("a()\nnew()\nb()\nc()", "statement").cfg, () => "fresh");
+    const positions = placeIncrementally(prev, layout, next);
+    const inserted = positions.fresh;
+    const insertedNode = next.nodes.find((n) => n.label === "new()");
+    if (!insertedNode) throw new Error("inserted node missing");
+    const below = positions[idOf("b()")];
+    expect(inserted).toBeDefined();
+    expect(below?.y).toBeGreaterThanOrEqual((inserted?.y ?? 0) + nodeSize(insertedNode).height);
+    expect(positions[idOf("a()")]).toEqual(layout[idOf("a()")]);
+  });
+});

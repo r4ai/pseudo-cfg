@@ -1,0 +1,162 @@
+"use client";
+
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionKeymap,
+} from "@codemirror/autocomplete";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { python } from "@codemirror/lang-python";
+import { bracketMatching, foldGutter, foldKeymap, indentOnInput, indentUnit } from "@codemirror/language";
+import { type Diagnostic as LintDiagnostic, lintGutter, lintKeymap, setDiagnostics } from "@codemirror/lint";
+import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
+import { EditorSelection, EditorState } from "@codemirror/state";
+import {
+  drawSelection,
+  dropCursor,
+  EditorView,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  highlightSpecialChars,
+  keymap,
+  lineNumbers,
+} from "@codemirror/view";
+import { indentationMarkers } from "@replit/codemirror-indentation-markers";
+import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import type { Diagnostic } from "@/features/cfg/parse";
+import { editorTheme } from "./editor-theme";
+import { highlightedLines, type LineRange, setHighlightedLines } from "./line-highlight";
+import { monacoKeymap, monacoMouse } from "./monaco-keymap";
+
+export type CodeEditorHandle = {
+  /** Highlights and scrolls to a range of lines, or clears the highlight. */
+  reveal: (range: LineRange | null) => void;
+  focusLine: (line: number) => void;
+};
+
+type CodeEditorProps = {
+  defaultValue: string;
+  diagnostics: Diagnostic[];
+  onChange: (value: string) => void;
+  onCursorLineChange: (line: number) => void;
+  ref?: Ref<CodeEditorHandle>;
+};
+
+export function CodeEditor({
+  defaultValue,
+  diagnostics,
+  onChange,
+  onCursorLineChange,
+  ref,
+}: CodeEditorProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const callbacks = useRef({ onChange, onCursorLineChange });
+  useEffect(() => {
+    callbacks.current = { onChange, onCursorLineChange };
+  });
+
+  // `defaultValue` only seeds the document; the editor owns it afterwards.
+  const initialDoc = useRef(defaultValue);
+
+  // The editor is an external, imperatively managed widget; create it once.
+  useEffect(() => {
+    const view = new EditorView({
+      parent: containerRef.current as HTMLDivElement,
+      state: EditorState.create({
+        doc: initialDoc.current,
+        extensions: [extensions(), listeners(callbacks)],
+      }),
+    });
+    viewRef.current = view;
+    return () => view.destroy();
+  }, []);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch(
+      setDiagnostics(
+        view.state,
+        diagnostics.map((d) => toLintDiagnostic(view.state, d)),
+      ),
+    );
+  }, [diagnostics]);
+
+  useImperativeHandle(ref, () => ({
+    reveal(range) {
+      const view = viewRef.current;
+      if (!view) return;
+      const line = range ? view.state.doc.line(Math.min(range.line, view.state.doc.lines)) : null;
+      view.dispatch({
+        effects: [
+          setHighlightedLines.of(range),
+          ...(line ? [EditorView.scrollIntoView(line.from, { y: "nearest" })] : []),
+        ],
+      });
+    },
+    focusLine(lineNumber) {
+      const view = viewRef.current;
+      if (!view) return;
+      const line = view.state.doc.line(Math.min(lineNumber, view.state.doc.lines));
+      const indent = /^\s*/.exec(line.text)?.[0].length ?? 0;
+      view.dispatch({ selection: EditorSelection.cursor(line.from + indent), scrollIntoView: true });
+      view.focus();
+    },
+  }));
+
+  return <div ref={containerRef} className="h-full overflow-hidden" />;
+}
+
+function extensions() {
+  return [
+    lineNumbers(),
+    foldGutter(),
+    lintGutter(),
+    highlightActiveLineGutter(),
+    highlightSpecialChars(),
+    history(),
+    drawSelection(),
+    dropCursor(),
+    EditorState.allowMultipleSelections.of(true),
+    EditorState.tabSize.of(4),
+    indentUnit.of("    "),
+    indentOnInput(),
+    bracketMatching(),
+    closeBrackets(),
+    autocompletion(),
+    highlightActiveLine(),
+    highlightSelectionMatches({ highlightWordAroundCursor: true }),
+    indentationMarkers({ markerType: "codeOnly" }),
+    search({ top: true }),
+    highlightedLines,
+    python(),
+    editorTheme,
+    monacoMouse,
+    keymap.of([
+      ...monacoKeymap,
+      ...closeBracketsKeymap,
+      ...defaultKeymap,
+      ...searchKeymap,
+      ...historyKeymap,
+      ...foldKeymap,
+      ...completionKeymap,
+      ...lintKeymap,
+    ]),
+  ];
+}
+
+function listeners(callbacks: { current: Pick<CodeEditorProps, "onChange" | "onCursorLineChange"> }) {
+  return EditorView.updateListener.of((update) => {
+    if (update.docChanged) callbacks.current.onChange(update.state.doc.toString());
+    if (update.docChanged || update.selectionSet) {
+      callbacks.current.onCursorLineChange(update.state.doc.lineAt(update.state.selection.main.head).number);
+    }
+  });
+}
+
+function toLintDiagnostic(state: EditorState, diagnostic: Diagnostic): LintDiagnostic {
+  const line = state.doc.line(Math.min(diagnostic.line, state.doc.lines));
+  return { from: line.from, to: line.to, severity: "error", message: diagnostic.message };
+}
