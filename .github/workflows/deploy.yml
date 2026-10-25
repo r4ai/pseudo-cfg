@@ -25,7 +25,7 @@ jobs:
     # Secrets live in the `production` environment, which only accepts deployments from main.
     environment:
       name: production
-      url: https://pseudo-cfg.mj82xx.workers.dev
+      url: https://pseudo-cfg.r4ai.dev
     permissions:
       contents: read
     steps:
