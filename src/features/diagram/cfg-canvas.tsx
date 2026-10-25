@@ -7,8 +7,10 @@ import {
   BackgroundVariant,
   Controls,
   type NodeChange,
+  type NodeHandle,
   type OnNodesChange,
   Panel,
+  Position,
   ReactFlow,
   SelectionMode,
   useReactFlow,
@@ -78,11 +80,17 @@ export function CfgCanvas({
   const nodes: CfgFlowNode[] = cfg.nodes.map((node) => {
     // Start and end nodes stand for the whole scope, not the line they point at.
     const terminal = node.kind === "start" || node.kind === "end";
+    const size = nodeSize(node);
     return {
       id: node.id,
       type: "cfg",
       position: positions[node.id] ?? { x: 0, y: 0 },
-      ...nodeSize(node),
+      ...size,
+      // Node objects are rebuilt every render, and React Flow forgets measured handles of a
+      // new object until it measures the DOM again, hiding every edge for a frame. Declaring
+      // the size and handles up front keeps edges drawn through moves, selection and edits.
+      measured: size,
+      handles: centerHandles(size),
       selected: selected.has(node.id),
       data: {
         node,
@@ -216,6 +224,15 @@ export function CfgCanvas({
       </div>
     </div>
   );
+}
+
+/** Matches the hidden handles in `CfgNode`; edge routes are precomputed, so only their presence matters. */
+function centerHandles({ width, height }: { width: number; height: number }): NodeHandle[] {
+  const center = { x: width / 2, y: height / 2 };
+  return [
+    { ...center, type: "target", position: Position.Top },
+    { ...center, type: "source", position: Position.Bottom },
+  ];
 }
 
 function covers(node: CfgNodeModel, line: number | null): boolean {
