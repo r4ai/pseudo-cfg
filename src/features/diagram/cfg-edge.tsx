@@ -2,7 +2,7 @@
 
 import { BaseEdge, type Edge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
-import { arrowhead, type EdgeGeometry, roundedPath, toneOf } from "./edge-route";
+import { arrowhead, type EdgeGeometry, roundedPath, shortLabel, toneOf } from "./edge-route";
 
 export type CfgEdgeData = {
   label: string | null;
@@ -35,7 +35,7 @@ export function CfgEdge({ data }: EdgeProps<CfgFlowEdge>) {
             className={cn("cfg-edge-label nodrag nopan", `is-${tone}`)}
             style={{ transform: `translate(-50%, -50%) translate(${labelAt.x}px, ${labelAt.y}px)` }}
           >
-            {data.label}
+            {shortLabel(data.label)}
           </span>
         </EdgeLabelRenderer>
       )}

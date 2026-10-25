@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrowhead, routeEdge, toneOf, verticalLanes } from "./edge-route";
+import { arrowhead, roundedPath, routeEdge, shortLabel, toneOf, verticalLanes } from "./edge-route";
 
 const box = (x: number, y: number, width = 100, height = 40) => ({ x, y, width, height });
 
@@ -66,12 +66,48 @@ describe("toneOf", () => {
   });
 });
 
+describe("shortLabel", () => {
+  it("shortens branch outcomes and keeps other labels", () => {
+    expect(["True", "False", "next", "done", "raise"].map(shortLabel)).toEqual([
+      "T",
+      "F",
+      "next",
+      "done",
+      "raise",
+    ]);
+  });
+});
+
+describe("roundedPath", () => {
+  const line = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+  ];
+  it("hops over each crossing", () => {
+    const d = roundedPath(line, 8, [{ x: 30, y: 0 }]);
+    expect(d).toBe("M 0 0 L 24 0 A 6 6 0 0 1 36 0 L 100 0");
+  });
+
+  it("joins crossings too close for separate hops into one, never doubling back", () => {
+    const d = roundedPath(line, 8, [
+      { x: 50, y: 0 },
+      { x: 45, y: 0 },
+    ]);
+    expect(d).toBe("M 0 0 L 39 0 A 8.5 6 0 0 1 56 0 L 100 0");
+  });
+
+  it("shrinks a hop that is close to the end of the line", () => {
+    const d = roundedPath(line, 8, [{ x: 96, y: 0 }]);
+    expect(d).toBe("M 0 0 L 93 0 A 3 3 0 0 1 99 0 L 100 0");
+  });
+});
+
 describe("arrowhead", () => {
   it("trims the line so it ends at the arrow's base", () => {
     const { line } = arrowhead([
       { x: 0, y: 0 },
       { x: 0, y: 100 },
     ]);
-    expect(line.at(-1)).toEqual({ x: 0, y: 91 });
+    expect(line.at(-1)).toEqual({ x: 0, y: 90 });
   });
 });

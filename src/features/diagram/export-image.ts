@@ -1,5 +1,5 @@
 import type { Cfg } from "@/features/cfg/build-cfg";
-import { arrowhead, labelWidth, roundedPath, toneOf } from "./edge-route";
+import { arrowhead, LABEL_HEIGHT, roundedPath, shortLabel, toneOf } from "./edge-route";
 import { nodeBoxes, routeEdges } from "./geometry";
 import { displayLines, type Positions } from "./layout";
 import { shapeOf } from "./shapes";
@@ -14,11 +14,7 @@ const COLORS = {
   text: "#171717",
   stroke: "#7a7a7a",
   edge: "#5c5c5c",
-  label: {
-    yes: { text: "#1d7a46", fill: "#ecf7f0", stroke: "#a8d9bb" },
-    no: { text: "#b4441f", fill: "#fdf0eb", stroke: "#f0b9a5" },
-    plain: { text: "#737373", fill: "#ffffff", stroke: "#e5e5e5" },
-  },
+  label: { yes: "#1d7a46", no: "#b4441f", plain: "#737373" },
   fill: { start: "#f2f2f2", end: "#f2f2f2", block: "#ffffff", branch: "#fdf6e3", loop: "#eef4fd" },
 } as const;
 
@@ -34,7 +30,12 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
     ...boxes.values(),
     ...routed.flatMap(({ geometry }) => [
       ...geometry.points.map((p) => ({ ...p, width: 0, height: 0 })),
-      { x: geometry.labelAt.x - 24, y: geometry.labelAt.y - 8, width: 48, height: 16 },
+      {
+        x: geometry.labelAt.x - 24,
+        y: geometry.labelAt.y - LABEL_HEIGHT / 2,
+        width: 48,
+        height: LABEL_HEIGHT,
+      },
     ]),
   ];
   const minX = Math.min(...all.map((b) => b.x)) - PADDING;
@@ -44,18 +45,16 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
 
   const edges = routed.map(({ geometry, back }) => {
     const { line, head } = arrowhead(geometry.points);
-    const dash = back ? ` stroke-dasharray="5 4"` : "";
-    return `<path d="${roundedPath(line, 8, geometry.hops)}" fill="none" stroke="${COLORS.edge}" stroke-width="1.5"${dash}/><polygon points="${head}" fill="${COLORS.edge}"/>`;
+    const dash = back ? ` stroke-dasharray="6 5"` : "";
+    return `<path d="${roundedPath(line, 8, geometry.hops)}" fill="none" stroke="${COLORS.edge}" stroke-width="2"${dash}/><polygon points="${head}" fill="${COLORS.edge}"/>`;
   });
   // Labels go on top of every edge, as they do on screen.
   const labels = routed.flatMap(({ geometry, label }) => {
     if (!label) return [];
     const { x, y } = geometry.labelAt;
-    const color = COLORS.label[toneOf(label)];
-    const pill = labelWidth(label);
+    // A halo in the background color keeps the text clear of lines, as on screen.
     return [
-      `<rect x="${x - pill / 2}" y="${y - 8}" width="${pill}" height="16" rx="8" fill="${color.fill}" stroke="${color.stroke}"/>` +
-        `<text x="${x}" y="${y}" fill="${color.text}" font-size="11" font-weight="500" text-anchor="middle" dominant-baseline="central">${escapeXml(label)}</text>`,
+      `<text x="${x}" y="${y}" fill="${COLORS.label[toneOf(label)]}" stroke="${COLORS.background}" stroke-width="3" paint-order="stroke" font-size="12" font-weight="700" text-anchor="middle" dominant-baseline="central">${escapeXml(shortLabel(label))}</text>`,
     ];
   });
 
@@ -64,7 +63,7 @@ export function diagramToSvg(cfg: Cfg, positions: Positions): string {
     if (!box) return "";
     const lines = displayLines(node.label);
     const shape = shapeOf(node.kind, box.width, box.height, lines.length > 1);
-    const paint = `fill="${COLORS.fill[node.kind]}" stroke="${COLORS.stroke}" stroke-width="1.25"`;
+    const paint = `fill="${COLORS.fill[node.kind]}" stroke="${COLORS.stroke}" stroke-width="1.5"`;
     const outline =
       shape.type === "rect"
         ? `<rect width="${box.width}" height="${box.height}" rx="${shape.rx}" ${paint}/>`

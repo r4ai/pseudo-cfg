@@ -1,9 +1,10 @@
 import type { Cfg, CfgEdge } from "@/features/cfg/build-cfg";
 import {
   type Box,
+  clearSpot,
   crossings,
   type EdgeGeometry,
-  labelPosition,
+  labelSpots,
   labelWidth,
   routeEdge,
   toneOf,
@@ -37,7 +38,8 @@ export function routeEdges(cfg: Cfg, boxes: Map<string, Box>): RoutedEdge[] {
     const source = boxes.get(edge.source);
     const target = boxes.get(edge.target);
     if (!source || !target) return [];
-    const tone = toneOf(edge.label);
+    // `raise` leaves like `return`, from the bottom; only branch outcomes take the side vertex.
+    const tone = edge.label === "raise" ? "plain" : toneOf(edge.label);
     const exit = tone === "yes" || tone === "no" ? tone : "plain";
     const flatTarget = kinds.get(edge.target) === "block";
     const obstacles = scopeBoxes.get(edge.source) ?? [];
@@ -45,10 +47,17 @@ export function routeEdges(cfg: Cfg, boxes: Map<string, Box>): RoutedEdge[] {
     const options = { exit, flatTarget, back: edge.back, outer: edge.jump, lanes } as const;
     const geometry = routeEdge(source, target, obstacles, options);
     lanes.push(...verticalLanes(geometry.points));
-    if (edge.label) geometry.labelAt = labelPosition(geometry.points, labelWidth(edge.label));
     return [{ ...edge, id: `${edge.source}>${edge.target}#${index}`, geometry }];
   });
-  const hops = crossings(routed.map((edge) => edge.geometry.points));
-  for (const [i, edge] of routed.entries()) edge.geometry.hops = hops[i] ?? [];
+  const routes = routed.map((edge) => edge.geometry.points);
+  const hops = crossings(routes);
+  const allBoxes = [...boxes.values()];
+  for (const [i, edge] of routed.entries()) {
+    edge.geometry.hops = hops[i] ?? [];
+    if (!edge.label) continue;
+    // Labels go where they cover no line and no node, so they stay legible after any rearrangement.
+    const width = labelWidth(edge.label);
+    edge.geometry.labelAt = clearSpot(labelSpots(edge.geometry.points, width), width, allBoxes, routes);
+  }
   return routed;
 }

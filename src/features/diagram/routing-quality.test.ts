@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildCfg, type Cfg } from "@/features/cfg/build-cfg";
 import { EXAMPLES } from "@/features/workspace/sample";
-import type { Point } from "./edge-route";
+import { LABEL_HEIGHT, labelWidth, type Point } from "./edge-route";
 import { nodeBoxes, routeEdges } from "./geometry";
 import { autoLayout } from "./layout";
 
@@ -67,6 +67,57 @@ function throughNodes(cfg: Cfg, routed: ReturnType<typeof routeEdges>, boxes: Re
   return count;
 }
 
+const segments = (points: Point[]) => points.slice(1).map((b, i) => [points[i] as Point, b] as const);
+
+/** Crossings between one edge's horizontal and another's vertical that are not drawn as a hop. */
+function unhoppedCrossings(routed: ReturnType<typeof routeEdges>): Point[] {
+  const missing: Point[] = [];
+  for (const [i, e] of routed.entries()) {
+    for (const [a, b] of segments(e.geometry.points)) {
+      if (Math.abs(a.y - b.y) >= 0.5) continue;
+      for (const [j, other] of routed.entries()) {
+        if (i === j) continue;
+        for (const [c, d] of segments(other.geometry.points)) {
+          if (Math.abs(c.x - d.x) >= 0.5) continue;
+          const crosses =
+            Math.min(a.x, b.x) < c.x &&
+            c.x < Math.max(a.x, b.x) &&
+            Math.min(c.y, d.y) < a.y &&
+            a.y < Math.max(c.y, d.y);
+          const hopped = e.geometry.hops.some((h) => Math.abs(h.x - c.x) < 0.5 && Math.abs(h.y - a.y) < 0.5);
+          if (crosses && !hopped) missing.push({ x: c.x, y: a.y });
+        }
+      }
+    }
+  }
+  return missing;
+}
+
+/** Labels that cover a node or any part of an edge. */
+function coveredLabels(routed: ReturnType<typeof routeEdges>, boxes: ReturnType<typeof nodeBoxes>): string[] {
+  return routed.flatMap((e) => {
+    if (!e.label) return [];
+    const width = labelWidth(e.label);
+    const { x, y } = e.geometry.labelAt;
+    const label = { x: x - width / 2, y: y - LABEL_HEIGHT / 2, width, height: LABEL_HEIGHT };
+    const hits = (o: { x: number; y: number; width: number; height: number }) =>
+      label.x < o.x + o.width &&
+      o.x < label.x + label.width &&
+      label.y < o.y + o.height &&
+      o.y < label.y + label.height;
+    const onNode = [...boxes.values()].some(hits);
+    const onEdge = routed.some((other) =>
+      other.geometry.points.slice(1).some((b, i) => {
+        const a = other.geometry.points[i] as Point;
+        const [x0, x1] = [Math.min(a.x, b.x), Math.max(a.x, b.x)];
+        const [y0, y1] = [Math.min(a.y, b.y), Math.max(a.y, b.y)];
+        return hits({ x: x0, y: y0, width: x1 - x0, height: y1 - y0 });
+      }),
+    );
+    return onNode || onEdge ? [e.id] : [];
+  });
+}
+
 describe("routing quality", () => {
   for (const [index, source] of SOURCES.entries()) {
     for (const granularity of ["block", "statement"] as const) {
@@ -74,6 +125,12 @@ describe("routing quality", () => {
         const { cfg, boxes, routed } = laidOut(source, granularity);
         expect(overlaps(routed)).toEqual([]);
         expect(throughNodes(cfg, routed, boxes)).toBe(0);
+      });
+
+      it(`hops every crossing and keeps labels clear (case ${index}, ${granularity})`, () => {
+        const { boxes, routed } = laidOut(source, granularity);
+        expect(unhoppedCrossings(routed)).toEqual([]);
+        expect(coveredLabels(routed, boxes)).toEqual([]);
       });
     }
   }
