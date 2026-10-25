@@ -13,6 +13,7 @@ const DEFAULT_WORKSPACE: SavedWorkspace = {
   granularity: "block",
   cfg: { nodes: [], edges: [] },
   positions: {},
+  edges: {},
 };
 
 /** Workspace state, restored from and saved to localStorage. */
@@ -32,13 +33,14 @@ export function useWorkspace() {
       granularity: state.granularity,
       cfg: state.cfg,
       positions: state.positions,
+      edges: state.edges,
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
     } catch {
       // Storage can be unavailable (private mode, quota); the app works without it.
     }
-  }, [state.source, state.granularity, state.cfg, state.positions]);
+  }, [state.source, state.granularity, state.cfg, state.positions, state.edges]);
 
   return [state, dispatch] as const;
 }
@@ -48,7 +50,7 @@ function loadInitial(): SavedWorkspace {
   const saved = loadSaved();
   const shared = sharedSource(location.hash);
   if (shared === null) return saved;
-  return { ...saved, source: shared, cfg: { nodes: [], edges: [] }, positions: {} };
+  return { ...saved, source: shared, cfg: { nodes: [], edges: [] }, positions: {}, edges: {} };
 }
 
 function loadSaved(): SavedWorkspace {
@@ -73,6 +75,7 @@ function isSavedWorkspace(value: unknown): value is SavedWorkspace {
     GRANULARITIES.has(v.granularity) &&
     typeof v.positions === "object" &&
     v.positions !== null &&
+    (v.edges === undefined || (typeof v.edges === "object" && v.edges !== null)) &&
     Array.isArray(cfg?.nodes) &&
     Array.isArray(cfg?.edges)
   );

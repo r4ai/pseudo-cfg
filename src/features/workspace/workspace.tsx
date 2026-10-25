@@ -147,10 +147,12 @@ export function Workspace() {
             <CfgCanvas
               cfg={state.cfg}
               positions={state.positions}
+              edgeOverrides={state.edges}
               layoutEpoch={state.layoutEpoch}
               diagnostics={state.diagnostics}
               activeLine={cursorLine}
               onMove={(positions) => dispatch({ type: "move", positions })}
+              onShapeEdge={(key, override) => dispatch({ type: "shapeEdge", key, override })}
               onCheckpoint={() => dispatch({ type: "checkpoint" })}
               onUndo={() => dispatch({ type: "undo" })}
               onRedo={() => dispatch({ type: "redo" })}
@@ -160,6 +162,7 @@ export function Workspace() {
               <DiagramToolbar
                 cfg={state.cfg}
                 positions={state.positions}
+                edgeOverrides={state.edges}
                 granularity={state.granularity}
                 onGranularityChange={(granularity) => dispatch({ type: "setGranularity", granularity })}
                 onTidy={() => dispatch({ type: "tidy" })}

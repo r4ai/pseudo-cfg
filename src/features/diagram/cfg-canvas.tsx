@@ -6,8 +6,10 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  type EdgeChange,
   type NodeChange,
   type NodeHandle,
+  type OnEdgesChange,
   type OnNodesChange,
   Panel,
   Position,
@@ -18,9 +20,9 @@ import {
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import type { Cfg, CfgNode as CfgNodeModel } from "@/features/cfg/build-cfg";
 import type { Diagnostic } from "@/features/cfg/parse";
-import { CfgEdge, type CfgFlowEdge } from "./cfg-edge";
+import { CfgEdge, type CfgFlowEdge, EdgeEditingContext } from "./cfg-edge";
 import { CfgNode, type CfgFlowNode } from "./cfg-node";
-import { nodeBoxes, routeEdges } from "./geometry";
+import { type EdgeOverride, type EdgeOverrides, nodeBoxes, routeEdges } from "./geometry";
 import { nodeSize, type Positions } from "./layout";
 
 const nodeTypes = { cfg: CfgNode };
@@ -33,6 +35,8 @@ const edgeTypes = { cfg: CfgEdge };
 type CfgCanvasProps = {
   cfg: Cfg;
   positions: Positions;
+  /** Edges the user has reshaped. */
+  edgeOverrides: EdgeOverrides;
   /** Changes when the layout is replaced wholesale; the view then fits the new graph. */
   layoutEpoch: number;
   /** Nodes built from a line with a problem are marked. */
@@ -40,6 +44,8 @@ type CfgCanvasProps = {
   /** Editor cursor line; nodes covering it are highlighted. */
   activeLine: number | null;
   onMove: (positions: Positions) => void;
+  /** Reshapes an edge; null routes it automatically again. */
+  onShapeEdge: (key: string, override: EdgeOverride | null) => void;
   /** Called before a user-initiated layout change so it can be undone. */
   onCheckpoint: () => void;
   onUndo: () => void;
@@ -54,10 +60,12 @@ type CfgCanvasProps = {
 export function CfgCanvas({
   cfg,
   positions,
+  edgeOverrides,
   layoutEpoch,
   diagnostics,
   activeLine,
   onMove,
+  onShapeEdge,
   onCheckpoint,
   onUndo,
   onRedo,
@@ -66,6 +74,7 @@ export function CfgCanvas({
   children,
 }: CfgCanvasProps) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [selectedEdges, setSelectedEdges] = useState<ReadonlySet<string>>(new Set());
   const { fitView } = useReactFlow();
   const fittedEpoch = useRef(layoutEpoch);
 
@@ -99,18 +108,24 @@ export function CfgCanvas({
       },
     };
   });
-  const edges: CfgFlowEdge[] = routeEdges(cfg, nodeBoxes(cfg, positions)).map((edge) => ({
+  const boxes = nodeBoxes(cfg, positions);
+  const edges: CfgFlowEdge[] = routeEdges(cfg, boxes, edgeOverrides).map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
     type: "cfg",
+    selected: selectedEdges.has(edge.id),
     data: {
       label: edge.label,
       back: edge.back,
       geometry: edge.geometry,
+      key: edge.key,
+      sourceSide: edge.sourceSide,
+      targetSide: edge.targetSide,
       highlighted: selected.has(edge.source) || selected.has(edge.target),
     },
   }));
+  const editing = { boxes, overrides: edgeOverrides, onCheckpoint, onShape: onShapeEdge };
   const empty = cfg.nodes.every((node) => node.kind === "start" || node.kind === "end");
 
   const dragging = useRef(false);
@@ -139,6 +154,18 @@ export function CfgCanvas({
     setSelected(nextSelected);
     const only = nextSelected.size === 1 ? cfg.nodes.find((n) => nextSelected.has(n.id)) : undefined;
     onSelectNode(only ?? null);
+  };
+
+  const onEdgesChange: OnEdgesChange<CfgFlowEdge> = (changes) => {
+    const next = applySelection(selectedEdges, changes);
+    if (next !== selectedEdges) setSelectedEdges(next);
+  };
+
+  /** Double-clicking an edge the user reshaped hands it back to automatic routing. */
+  const resetEdge = (key: string) => {
+    if (!edgeOverrides[key]) return;
+    onCheckpoint();
+    onShapeEdge(key, null);
   };
 
   const selectAll = () => {
@@ -185,42 +212,47 @@ export function CfgCanvas({
         tabIndex={-1}
         onKeyDown={onKeyDown}
       >
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          onNodesChange={onNodesChange}
-          onNodeDragStart={startDrag}
-          onNodeDragStop={stopDrag}
-          onSelectionDragStart={startDrag}
-          onSelectionDragStop={stopDrag}
-          onNodeDoubleClick={(_, node) => onOpenNode(node.data.node)}
-          colorMode="system"
-          nodesConnectable={false}
-          edgesFocusable={false}
-          deleteKeyCode={null}
-          selectionOnDrag
-          selectionMode={SelectionMode.Partial}
-          panOnDrag={[1, 2]}
-          panOnScroll
-          snapToGrid
-          snapGrid={[4, 4]}
-          fitView
-          fitViewOptions={FIT_VIEW_OPTIONS}
-          minZoom={0.1}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-          <Controls showInteractive={false} position="bottom-left" fitViewOptions={FIT_VIEW_OPTIONS} />
-          {empty && (
-            <Panel
-              position="top-center"
-              className="pointer-events-none !top-1/3 text-center text-sm text-muted-foreground"
-            >
-              Type pseudocode on the left to see its control flow here.
-            </Panel>
-          )}
-        </ReactFlow>
+        <EdgeEditingContext value={editing}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onEdgeDoubleClick={(_, edge) => edge.data && resetEdge(edge.data.key)}
+            elevateEdgesOnSelect
+            onNodeDragStart={startDrag}
+            onNodeDragStop={stopDrag}
+            onSelectionDragStart={startDrag}
+            onSelectionDragStop={stopDrag}
+            onNodeDoubleClick={(_, node) => onOpenNode(node.data.node)}
+            colorMode="system"
+            nodesConnectable={false}
+            edgesFocusable={false}
+            deleteKeyCode={null}
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
+            panOnDrag={[1, 2]}
+            panOnScroll
+            snapToGrid
+            snapGrid={[4, 4]}
+            fitView
+            fitViewOptions={FIT_VIEW_OPTIONS}
+            minZoom={0.1}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+            <Controls showInteractive={false} position="bottom-left" fitViewOptions={FIT_VIEW_OPTIONS} />
+            {empty && (
+              <Panel
+                position="top-center"
+                className="pointer-events-none !top-1/3 text-center text-sm text-muted-foreground"
+              >
+                Type pseudocode on the left to see its control flow here.
+              </Panel>
+            )}
+          </ReactFlow>
+        </EdgeEditingContext>
       </div>
     </div>
   );
@@ -249,7 +281,7 @@ function movedPositions(changes: NodeChange<CfgFlowNode>[]): Positions {
 
 function applySelection(
   current: ReadonlySet<string>,
-  changes: NodeChange<CfgFlowNode>[],
+  changes: (NodeChange<CfgFlowNode> | EdgeChange<CfgFlowEdge>)[],
 ): ReadonlySet<string> {
   const selects = changes.filter((c) => c.type === "select");
   if (selects.length === 0) return current;

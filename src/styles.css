@@ -230,6 +230,15 @@
 .cfg-arrowhead.is-highlighted {
   fill: var(--diagram-accent);
 }
+/* Handles on a selected edge for dragging its ends and segments. */
+.cfg-edge-handle {
+  fill: var(--background);
+  stroke: var(--diagram-accent);
+  pointer-events: all;
+}
+.cfg-edge-handle:hover {
+  fill: var(--diagram-accent);
+}
 /* Bare text with a halo in the canvas color, so it stays legible over grid dots and lines. */
 .cfg-edge-label {
   position: absolute;

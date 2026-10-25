@@ -16,11 +16,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Cfg, Granularity } from "@/features/cfg/build-cfg";
 import { copyPng, diagramToSvg, downloadBlob, svgToPng } from "./export-image";
+import type { EdgeOverrides } from "./geometry";
 import type { Positions } from "./layout";
 
 type DiagramToolbarProps = {
   cfg: Cfg;
   positions: Positions;
+  edgeOverrides: EdgeOverrides;
   granularity: Granularity;
   onGranularityChange: (granularity: Granularity) => void;
   onTidy: () => void;
@@ -42,11 +44,12 @@ async function run(action: () => Promise<void>, success: string) {
 export function DiagramToolbar({
   cfg,
   positions,
+  edgeOverrides,
   granularity,
   onGranularityChange,
   onTidy,
 }: DiagramToolbarProps) {
-  const svg = () => diagramToSvg(cfg, positions);
+  const svg = () => diagramToSvg(cfg, positions, edgeOverrides);
 
   const copyImage = () => run(() => copyPng(svgToPng(svg())), "Image copied to clipboard");
   const savePng = () => run(async () => downloadBlob(await svgToPng(svg()), `${FILE_NAME}.png`), "Saved PNG");
@@ -81,7 +84,7 @@ export function DiagramToolbar({
           <WandSparklesIcon data-icon="inline-start" />
           <span className="max-sm:sr-only">Tidy up</span>
         </TooltipTrigger>
-        <TooltipContent>Discard manual positions and lay out again</TooltipContent>
+        <TooltipContent>Discard manual positions and edge routes and lay out again</TooltipContent>
       </Tooltip>
       <Button size="sm" onClick={copyImage}>
         <CopyIcon data-icon="inline-start" />
