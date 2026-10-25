@@ -7,7 +7,8 @@
     "directory": "./dist/public",
     "not_found_handling": "404-page",
   },
-  "routes": [{ "pattern": "pseudo-cfg.r4ai.dev", "custom_domain": true }],
+  // The pseudo-cfg.r4ai.dev custom domain is attached once by hand, not here:
+  // declaring it would make every deploy need Workers Routes permission on the zone.
   "workers_dev": true,
   "preview_urls": false,
 }
