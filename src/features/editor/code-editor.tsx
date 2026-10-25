@@ -7,11 +7,12 @@ import {
   completionKeymap,
 } from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { cpp } from "@codemirror/lang-cpp";
 import { python } from "@codemirror/lang-python";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput, indentUnit } from "@codemirror/language";
 import { type Diagnostic as LintDiagnostic, lintGutter, lintKeymap, setDiagnostics } from "@codemirror/lint";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
 import {
   drawSelection,
   dropCursor,
@@ -24,6 +25,7 @@ import {
 } from "@codemirror/view";
 import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { type Ref, useEffect, useImperativeHandle, useRef } from "react";
+import type { Language } from "@/features/cfg/build-cfg";
 import type { Diagnostic } from "@/features/cfg/parse";
 import { editorTheme } from "./editor-theme";
 import { highlightedLines, type LineRange, setHighlightedLines } from "./line-highlight";
@@ -39,14 +41,20 @@ export type CodeEditorHandle = {
 
 type CodeEditorProps = {
   defaultValue: string;
+  language: Language;
   diagnostics: Diagnostic[];
   onChange: (value: string) => void;
   onCursorLineChange: (line: number) => void;
   ref?: Ref<CodeEditorHandle>;
 };
 
+const LANGUAGE_SUPPORT = { python, cuda: cpp } satisfies Record<Language, unknown>;
+/** Holds the syntax mode so it can change without recreating the editor. */
+const languageSupport = new Compartment();
+
 export function CodeEditor({
   defaultValue,
+  language,
   diagnostics,
   onChange,
   onCursorLineChange,
@@ -61,6 +69,7 @@ export function CodeEditor({
 
   // `defaultValue` only seeds the document; the editor owns it afterwards.
   const initialDoc = useRef(defaultValue);
+  const initialLanguage = useRef(language);
 
   // The editor is an external, imperatively managed widget; create it once.
   useEffect(() => {
@@ -68,12 +77,22 @@ export function CodeEditor({
       parent: containerRef.current as HTMLDivElement,
       state: EditorState.create({
         doc: initialDoc.current,
-        extensions: [extensions(), listeners(callbacks)],
+        extensions: [
+          extensions(),
+          languageSupport.of(LANGUAGE_SUPPORT[initialLanguage.current]()),
+          listeners(callbacks),
+        ],
       }),
     });
     viewRef.current = view;
     return () => view.destroy();
   }, []);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: languageSupport.reconfigure(LANGUAGE_SUPPORT[language]()),
+    });
+  }, [language]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -143,7 +162,6 @@ function extensions() {
     indentationMarkers({ markerType: "codeOnly" }),
     search({ top: true }),
     highlightedLines,
-    python(),
     editorTheme,
     monacoMouse,
     keymap.of([

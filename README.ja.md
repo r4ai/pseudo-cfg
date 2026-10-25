@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-**Python 風の疑似コードから制御フローグラフ（CFG）をリアルタイム生成し、<br>手動配置を維持したまま編集できる Web アプリ**
+**Python 風・CUDA 風の疑似コードから制御フローグラフ（CFG）をリアルタイム生成し、<br>手動配置を維持したまま編集できる Web アプリ**
 
 デモ: [pseudo-cfg.r4ai.dev](https://pseudo-cfg.r4ai.dev)
 
@@ -17,12 +17,12 @@
   - 厳密な構文が要求され、書きかけのコードや自由記述の疑似コードで描画が破綻
 
 `Pseudo CFG` は、寛容な疑似コードパーサーと差分レイアウトエンジンを組み合わせることでこれらを解決する。
-左ペインで Python 風の疑似コードを書き、右ペインでノード位置を微調整すると、以後のコード編集でも手動配置がそのまま維持される。
+左ペインで Python 風または CUDA 風の疑似コードを書き、右ペインでノード位置を微調整すると、以後のコード編集でも手動配置がそのまま維持される。
 
 ```mermaid
 flowchart LR
     subgraph Editor["CodeMirror 6 エディタ"]
-        Code["Python 風疑似コード"]
+        Code["Python 風 / CUDA 風疑似コード"]
     end
 
     subgraph Engine["CFG・レイアウトエンジン"]
@@ -46,6 +46,7 @@ flowchart LR
 - **寛容な疑似コードパーサー**
   - `def`・`if` / `elif` / `else`・`while`・`for`・`break`・`continue`・`return`・`raise` を解析
   - `try` / `except` や `match` / `case` も近似分岐として表現し、その他の自由記述は通常の文として描画
+  - 波括弧で区切る CUDA / C++ 風の構文にも切り替え可能で、`__global__` カーネルなどの関数、`if` / `else if` / `else`・`for`・`while`・`do` / `while`・フォールスルー付きの `switch` を解析
   - 到達不能コードやインデントの不整合を検出し、グラフを崩さずにエディタとノード上で警告
 - **手動配置を維持する差分レイアウト**
   - 最長共通部分列（LCS）と種別マッチングにより、編集前後でノード ID を引き継ぎ

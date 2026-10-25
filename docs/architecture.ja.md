@@ -3,7 +3,7 @@
 [English](architecture.md) | 日本語
 
 本ドキュメントでは `Pseudo CFG` の内部設計について解説する。
-Python 風疑似コードのパース、CFG の構築、編集前後でのノード ID 照合、差分レイアウト、直交エッジルーティングおよび画像出力の仕組みを扱う。
+Python 風・CUDA 風疑似コードのパース、CFG の構築、編集前後でのノード ID 照合、差分レイアウト、直交エッジルーティングおよび画像出力の仕組みを扱う。
 
 ```mermaid
 flowchart TD
@@ -48,9 +48,23 @@ flowchart TD
 - **フォールバック規則**
   - 上記以外のすべての行は通常の文（`simple`）として扱う
 
+### CUDA-like Syntax (`src/features/cfg/parse-cuda.ts`)
+
+波括弧で区切るコードも同じ文の木に変換するため、以降の処理はすべて共通である。
+
+- **字句解析**
+  - `//`・`/* */` コメントとプリプロセッサ行（`#include`・`#pragma unroll` など）を除去し、文字列・文字リテラル内の波括弧やセミコロンは無視
+- **文の解析**
+  - 文は `;` までとし、その内部の波括弧（初期化子リストやラムダ本体）は文の一部として扱う。`kernel<<<grid, block>>>(...)` の起動も通常の文になる
+  - `if` / `else if` / `else`・`while`・`for`（`for (;;)` は出口なし）・`do` / `while`・`switch` / `case` / `default` を本体の波括弧の有無にかかわらず認識
+  - `try` / `catch` は Python の `try` / `except` と同様に近似
+- **関数**
+  - 関数本体の外で引数リストに続く `{` を関数定義とみなし、シグネチャ全体をラベルとする独立したグラフを生成
+  - 関数を含むファイルでは、C では関数外のコードが実行されないため、トップレベルの宣言（グローバル変数・`struct` 定義・プロトタイプ）を省略
+
 ## 2. CFG Construction (`src/features/cfg/build-cfg.ts`)
 
-`buildCfg(source, granularity)` は AST を走査し、ノード（`start`・`end`・`block`・`branch`・`loop`）と有向エッジに変換する。
+`buildCfg(source, granularity, language)` は AST を走査し、ノード（`start`・`end`・`block`・`branch`・`loop`）と有向エッジに変換する。
 
 - **スコープごとの連結成分**
   - トップレベルのコードは `Start` → `End` のグラフを生成

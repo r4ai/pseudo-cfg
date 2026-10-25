@@ -1,21 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { buildCfg, type Cfg } from "@/features/cfg/build-cfg";
+import { buildCfg, type Cfg, type Language } from "@/features/cfg/build-cfg";
 import { EXAMPLES } from "@/features/workspace/sample";
 import { LABEL_HEIGHT, labelWidth, type Point } from "./edge-route";
 import { nodeBoxes, routeEdges } from "./geometry";
 import { autoLayout } from "./layout";
 
-const SOURCES = [
-  ...EXAMPLES.map((example) => example.source),
+const SOURCES: (string | { source: string; language: Language })[] = [
+  ...EXAMPLES,
   "for i in xs:\n    if i:\n        a()\n    else:\n        b()\n        if c:\n            d()\n    e()\nf()",
   "def f(x):\n    if x is None:\n        return 0\n    y = x * 2\n    if y > 10:\n        y = 10\n    return y",
   "while a:\n    if b:\n        continue\n    if c:\n        break\n    d()\nq()",
+  {
+    language: "cuda",
+    source: "do {\n  if (a) continue;\n  if (b) break;\n  c();\n} while (d);\ne();",
+  },
+  {
+    language: "cuda",
+    source: "switch (k) {\ncase 0: a(); break;\ncase 1:\ncase 2: b();\ndefault: c();\n}\nd();",
+  },
 ];
 
 type Segment = { edge: number; target: string; a: Point; b: Point };
 
-function laidOut(source: string, granularity: "block" | "statement") {
-  const { cfg } = buildCfg(source, granularity);
+function laidOut(input: (typeof SOURCES)[number], granularity: "block" | "statement") {
+  const { source, language } = typeof input === "string" ? { source: input, language: undefined } : input;
+  const { cfg } = buildCfg(source, granularity, language);
   const boxes = nodeBoxes(cfg, autoLayout(cfg));
   return { cfg, boxes, routed: routeEdges(cfg, boxes) };
 }
