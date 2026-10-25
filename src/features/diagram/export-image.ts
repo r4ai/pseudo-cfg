@@ -1,6 +1,6 @@
 import type { Cfg } from "@/features/cfg/build-cfg";
 import { arrowhead, LABEL_HEIGHT, roundedPath, shortLabel, toneOf } from "./edge-route";
-import { nodeBoxes, routeEdges } from "./geometry";
+import { type EdgeOverrides, nodeBoxes, routeEdges } from "./geometry";
 import { displayLines, type Positions } from "./layout";
 import { shapeOf } from "./shapes";
 
@@ -22,9 +22,9 @@ const COLORS = {
  * Renders the diagram as a standalone SVG document straight from the model,
  * independent of the on-screen DOM, theme, zoom and selection.
  */
-export function diagramToSvg(cfg: Cfg, positions: Positions): string {
+export function diagramToSvg(cfg: Cfg, positions: Positions, edgeOverrides: EdgeOverrides = {}): string {
   const boxes = nodeBoxes(cfg, positions);
-  const routed = routeEdges(cfg, boxes);
+  const routed = routeEdges(cfg, boxes, edgeOverrides);
   // Back edges run outside the nodes, so the bounds include every edge point and label.
   const all = [
     ...boxes.values(),

@@ -1,6 +1,7 @@
 import { buildCfg, type Cfg, type Granularity } from "@/features/cfg/build-cfg";
 import type { Diagnostic } from "@/features/cfg/parse";
 import { reconcile } from "@/features/cfg/reconcile";
+import { type EdgeOverride, type EdgeOverrides, edgeKey } from "@/features/diagram/geometry";
 import { autoLayout, mostlyReplaced, placeIncrementally, type Positions } from "@/features/diagram/layout";
 
 export type WorkspaceState = {
@@ -9,6 +10,8 @@ export type WorkspaceState = {
   cfg: Cfg;
   diagnostics: Diagnostic[];
   positions: Positions;
+  /** Edges the user has reshaped; the rest are routed automatically. */
+  edges: EdgeOverrides;
   /** Layout history for undo/redo in the diagram; the editor keeps its own text history. */
   undo: LayoutSnapshot[];
   redo: LayoutSnapshot[];
@@ -17,15 +20,20 @@ export type WorkspaceState = {
 };
 
 /** A diagram arrangement. The graph is kept so a granularity switch can be undone with its ids. */
-type LayoutSnapshot = Pick<WorkspaceState, "granularity" | "cfg" | "positions">;
+type LayoutSnapshot = Pick<WorkspaceState, "granularity" | "cfg" | "positions" | "edges">;
 
 /** What is persisted between visits. Ids in `cfg` let saved positions survive a reload. */
-export type SavedWorkspace = Pick<WorkspaceState, "source" | "granularity" | "cfg" | "positions">;
+export type SavedWorkspace = Pick<WorkspaceState, "source" | "granularity" | "cfg" | "positions"> & {
+  /** Missing from workspaces saved before edges could be reshaped. */
+  edges?: EdgeOverrides;
+};
 
 export type WorkspaceAction =
   | { type: "edit"; source: string }
   | { type: "setGranularity"; granularity: Granularity }
   | { type: "move"; positions: Positions }
+  /** Replaces how the user shaped an edge; null routes it automatically again. */
+  | { type: "shapeEdge"; key: string; override: EdgeOverride | null }
   | { type: "checkpoint" }
   | { type: "tidy" }
   | { type: "undo" }
@@ -37,7 +45,7 @@ const createId = () => crypto.randomUUID().slice(0, 8);
 
 export function initWorkspace(saved: SavedWorkspace): WorkspaceState {
   return rebuild(
-    { ...saved, diagnostics: [], undo: [], redo: [], layoutEpoch: 0 },
+    { ...saved, edges: saved.edges ?? {}, diagnostics: [], undo: [], redo: [], layoutEpoch: 0 },
     saved.source,
     saved.granularity,
   );
@@ -54,6 +62,10 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     }
     case "move":
       return { ...state, positions: { ...state.positions, ...action.positions } };
+    case "shapeEdge": {
+      const { [action.key]: _, ...rest } = state.edges;
+      return { ...state, edges: action.override ? { ...rest, [action.key]: action.override } : rest };
+    }
     case "checkpoint":
       return withCheckpoint(state);
     case "tidy":
@@ -69,20 +81,35 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 function rebuild(state: WorkspaceState, source: string, granularity: Granularity): WorkspaceState {
   const built = buildCfg(source, granularity);
   const cfg = reconcile(state.cfg, built.cfg, createId);
-  const next = { ...state, source, granularity, cfg, diagnostics: built.diagnostics };
+  const next = {
+    ...state,
+    source,
+    granularity,
+    cfg,
+    diagnostics: built.diagnostics,
+    edges: kept(state.edges, cfg),
+  };
   // Laying out afresh discards manual positions, so it can be undone from the diagram.
   if (mostlyReplaced(state.cfg, state.positions, cfg)) return relaid(withCheckpoint(next));
   return { ...next, positions: placeIncrementally(state.cfg, state.positions, cfg) };
 }
 
+/** A fresh layout routes every edge afresh too. */
 function relaid(state: WorkspaceState): WorkspaceState {
-  return { ...state, positions: autoLayout(state.cfg), layoutEpoch: state.layoutEpoch + 1 };
+  return { ...state, positions: autoLayout(state.cfg), edges: {}, layoutEpoch: state.layoutEpoch + 1 };
 }
 
-const snapshotOf = ({ granularity, cfg, positions }: WorkspaceState): LayoutSnapshot => ({
+/** The overrides of edges that are still in `cfg`. */
+function kept(edges: EdgeOverrides, cfg: Cfg): EdgeOverrides {
+  const keys = new Set(cfg.edges.map(edgeKey));
+  return Object.fromEntries(Object.entries(edges).filter(([key]) => keys.has(key)));
+}
+
+const snapshotOf = ({ granularity, cfg, positions, edges }: WorkspaceState): LayoutSnapshot => ({
   granularity,
   cfg,
   positions,
+  edges,
 });
 
 function withCheckpoint(state: WorkspaceState): WorkspaceState {
@@ -95,11 +122,20 @@ function travel(state: WorkspaceState, from: "undo" | "redo", to: "undo" | "redo
   const moved = { ...state, [from]: state[from].slice(0, -1), [to]: [...state[to], snapshotOf(state)] };
   if (snapshot.granularity !== state.granularity) {
     // Rebuild against the snapshot's graph so its ids, and so its positions, carry over.
-    const restored = { ...moved, cfg: snapshot.cfg, positions: snapshot.positions };
+    const restored = {
+      ...moved,
+      cfg: snapshot.cfg,
+      positions: snapshot.positions,
+      edges: kept(snapshot.edges, state.cfg),
+    };
     // The graph changes wholesale, so the view fits it as after a switch.
     const rebuilt = rebuild(restored, state.source, snapshot.granularity);
     return { ...rebuilt, layoutEpoch: Math.max(rebuilt.layoutEpoch, state.layoutEpoch + 1) };
   }
   // Nodes added after the snapshot keep their current place.
-  return { ...moved, positions: { ...state.positions, ...snapshot.positions } };
+  return {
+    ...moved,
+    positions: { ...state.positions, ...snapshot.positions },
+    edges: kept(snapshot.edges, state.cfg),
+  };
 }

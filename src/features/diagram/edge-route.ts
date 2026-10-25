@@ -12,6 +12,9 @@ export type EdgeGeometry = {
 
 export type EdgeTone = "yes" | "no" | "plain";
 
+/** A side of a node; an edge attaches at its midpoint, which is a vertex of diamonds and hexagons. */
+export type Side = "top" | "right" | "bottom" | "left";
+
 /** Whether an edge label means the condition held (`True`, `next`) or not (`False`, `done`, `raise`). */
 export function toneOf(label: string | null): EdgeTone {
   if (label === "True" || label === "next") return "yes";
@@ -39,12 +42,8 @@ const MIN_HOP = 3;
 const CORNER = 8;
 
 export type RouteOptions = {
-  /**
-   * Which way the edge leaves a branch, so outcomes always sit in the same place:
-   * `yes` (True, next) leaves from the bottom, `no` (False, done) from the right vertex.
-   * Other edges leave from the bottom.
-   */
-  exit?: "yes" | "no" | "plain";
+  /** Which side the edge leaves from; see `exitSides` for how branch outcomes pick one. */
+  exit?: "bottom" | "right" | "left";
   /** The target has a flat top, so an edge may enter it off-center to stay straight. */
   flatTarget?: boolean;
   /** Loop back edges run up on the left, apart from everything that leaves to the right. */
@@ -71,7 +70,14 @@ export function routeEdge(
   obstacles: Box[],
   options: RouteOptions = {},
 ): EdgeGeometry {
-  const { exit = "plain", flatTarget = false, back = false, outer = false, lanes = [] } = options;
+  const { exit = "bottom", flatTarget = false, back = false, outer = false, lanes = [] } = options;
+  if (exit === "left") {
+    // Leaving on the left is leaving on the right in a mirror image.
+    const [s, t] = [mirror(source), mirror(target)];
+    const mirrored = obstacles.map((o) => (o === source ? s : o === target ? t : mirror(o)));
+    const geometry = routeEdge(s, t, mirrored, { ...options, exit: "right", lanes: lanes.map(mirror) });
+    return withLabel(geometry.points.map(({ x, y }) => ({ x: -x, y })));
+  }
   const sourceX = centerX(source);
   const others = () => obstacles.filter((o) => o !== source && o !== target);
   const t = top(target);
@@ -80,7 +86,7 @@ export function routeEdge(
     // Loop back edge: leave below the source (or by the False vertex), climb in a lane left of
     // every node in between, and come into the loop header from above, where it joins the edge
     // entering the loop. Entering from above keeps the header's side vertices free for its exits.
-    const s = exit === "no" ? right(source) : bottom(source);
+    const s = exit === "right" ? right(source) : bottom(source);
     // A False exit steps out to the right and drops below its node before turning left.
     const below = source.y + source.height + LANE_GAP / 2;
     const above = t.y - LANE_GAP;
@@ -88,8 +94,8 @@ export function routeEdge(
     let lane = Math.min(...[source, target, ...between].map((o) => o.x)) - 2 * LANE_GAP;
     const taken = lanes.filter((o) => o.y < below && o.y + o.height > above);
     for (let hit = laneHit(lane, taken); hit; hit = laneHit(lane, taken)) lane = hit.x - LANE_GAP / 2;
-    const turn = exit === "no" ? s.x + LANE_GAP / 2 : s.x;
-    const start = exit === "no" ? [s, { x: turn, y: s.y }] : [s];
+    const turn = exit === "right" ? s.x + LANE_GAP / 2 : s.x;
+    const start = exit === "right" ? [s, { x: turn, y: s.y }] : [s];
     return withLabel([
       ...start,
       { x: turn, y: below },
@@ -100,8 +106,8 @@ export function routeEdge(
     ]);
   }
 
-  if (exit === "no") {
-    // The False exit always leaves to the right; a target further right is reached directly,
+  if (exit === "right") {
+    // A side exit leaves to the right; a target further right is reached directly,
     // one below or to the left by going down a lane on the right.
     const s = right(source);
     const direct = [s, { x: t.x, y: s.y }, t];
@@ -120,6 +126,173 @@ export function routeEdge(
   const drop = { x: s.x, y: s.y + LANE_GAP / 2 };
   return withLabel(detour([s, drop], source.x + source.width + LANE_GAP, t, others(), lanes, outer));
 }
+
+/** How far an edge runs straight out of (or into) a side before it may turn. */
+const STUB = LANE_GAP;
+/** What a bend costs, in pixels of length, when choosing between routes. */
+const BEND = 40;
+
+/**
+ * Routes an edge between two given sides, for edges whose sides the user has chosen.
+ * Of a few orthogonal shapes (L, Z, and lanes round everything in the way), the shortest
+ * clear one wins, bends counting extra.
+ */
+export function routeBetween(source: Box, from: Side, target: Box, to: Side, obstacles: Box[]): EdgeGeometry {
+  const s = anchor(source, from);
+  const t = anchor(target, to);
+  const s1 = outward(s, from, STUB);
+  const t1 = outward(t, to, STUB);
+  const blockers = [source, target, ...obstacles.filter((o) => o !== source && o !== target)];
+  const spanY = blockers.filter((o) => o.y < Math.max(s1.y, t1.y) && o.y + o.height > Math.min(s1.y, t1.y));
+  const spanX = blockers.filter((o) => o.x < Math.max(s1.x, t1.x) && o.x + o.width > Math.min(s1.x, t1.x));
+  const lanesX = [
+    (s1.x + t1.x) / 2,
+    Math.min(s1.x, t1.x, ...spanY.map((o) => o.x)) - LANE_GAP,
+    Math.max(s1.x, t1.x, ...spanY.map((o) => o.x + o.width)) + LANE_GAP,
+  ];
+  const lanesY = [
+    (s1.y + t1.y) / 2,
+    Math.min(s1.y, t1.y, ...spanX.map((o) => o.y)) - LANE_GAP,
+    Math.max(s1.y, t1.y, ...spanX.map((o) => o.y + o.height)) + LANE_GAP,
+  ];
+  const middles = [
+    [{ x: t1.x, y: s1.y }],
+    [{ x: s1.x, y: t1.y }],
+    ...lanesX.map((x) => [
+      { x, y: s1.y },
+      { x, y: t1.y },
+    ]),
+    ...lanesY.map((y) => [
+      { x: s1.x, y },
+      { x: t1.x, y },
+    ]),
+  ];
+  const routes = middles
+    .map((middle) => simplify([s, s1, ...middle, t1, t]))
+    .filter((points) => leaves(points, from) && leaves(points.toReversed(), to));
+  const clear = routes.filter((points) => isClear(points.slice(1, -1), blockers));
+  const best = (clear.length > 0 ? clear : routes).toSorted((a, b) => routeCost(a) - routeCost(b))[0];
+  return withLabel(best ?? [s, s1, t1, t]);
+}
+
+function routeCost(points: Point[]): number {
+  return (
+    points.slice(1).reduce((sum, p, i) => sum + distance(points[i] as Point, p), 0) + BEND * points.length
+  );
+}
+
+/**
+ * Moves the ends of a route the user shaped onto anchors that have moved with their nodes,
+ * stretching the segments next to them so it stays orthogonal. Null when it no longer fits,
+ * because an end would have to leave its node backwards.
+ */
+export function reanchor(points: Point[], s: Point, from: Side, t: Point, to: Side): Point[] | null {
+  if (points.length < 3) return null;
+  const p = points.map((point) => ({ ...point }));
+  const n = p.length - 1;
+  const first = sameX(p[0] as Point, p[1] as Point) ? "x" : "y";
+  (p[1] as Point)[first] = s[first];
+  p[0] = s;
+  const last = sameX(p[n] as Point, p[n - 1] as Point) ? "x" : "y";
+  (p[n - 1] as Point)[last] = t[last];
+  p[n] = t;
+  const route = simplify(p);
+  return leaves(route, from) && leaves(route.toReversed(), to) ? route : null;
+}
+
+/**
+ * The route with segment `index` slid sideways by `delta` (only the part across the segment
+ * counts). A segment at an end first gets a short stub, so the end stays on its anchor.
+ */
+export function dragSegment(points: Point[], index: number, delta: Point): Point[] {
+  let p = points.map((point) => ({ ...point }));
+  let k = index;
+  if (k === 0) {
+    const a = toward(
+      p[0] as Point,
+      p[1] as Point,
+      Math.min(STUB, distance(p[0] as Point, p[1] as Point) / 2),
+    );
+    p = [p[0] as Point, a, { ...a }, ...p.slice(1)];
+    k = 2;
+  }
+  if (k === p.length - 2) {
+    const n = p.length - 1;
+    const b = toward(
+      p[n] as Point,
+      p[n - 1] as Point,
+      Math.min(STUB, distance(p[n] as Point, p[n - 1] as Point) / 2),
+    );
+    p = [...p.slice(0, n), { ...b }, b, p[n] as Point];
+  }
+  const a = p[k] as Point;
+  const b = p[k + 1] as Point;
+  const axis = sameX(a, b) ? "x" : "y";
+  a[axis] += delta[axis];
+  b[axis] += delta[axis];
+  return p;
+}
+
+/** Midpoint of a box's side. */
+export function anchor(box: Box, side: Side): Point {
+  switch (side) {
+    case "top":
+      return top(box);
+    case "right":
+      return right(box);
+    case "bottom":
+      return bottom(box);
+    case "left":
+      return { x: box.x, y: box.y + box.height / 2 };
+  }
+}
+
+/** The side whose anchor is nearest to `point`. */
+export function nearestSide(box: Box, point: Point): Side {
+  const sides = ["top", "right", "bottom", "left"] as const;
+  return sides.reduce((best, side) =>
+    distance(anchor(box, side), point) < distance(anchor(box, best), point) ? side : best,
+  );
+}
+
+const OUTWARD: Record<Side, Point> = {
+  top: { x: 0, y: -1 },
+  right: { x: 1, y: 0 },
+  bottom: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+};
+
+const outward = (p: Point, side: Side, by: number): Point => ({
+  x: p.x + OUTWARD[side].x * by,
+  y: p.y + OUTWARD[side].y * by,
+});
+
+/** Whether the route's first segment heads out of `side` rather than back into the node. */
+function leaves(points: Point[], side: Side): boolean {
+  const [a, b] = points as [Point, Point];
+  if (!b) return false;
+  const d = unit(a, b);
+  return d.x * OUTWARD[side].x + d.y * OUTWARD[side].y > 0.5;
+}
+
+/** Drops repeated points and points in the middle of a straight run. */
+export function simplify(points: Point[]): Point[] {
+  const out: Point[] = [];
+  for (const p of points) {
+    const last = out.at(-1);
+    if (last && distance(last, p) < 0.5) continue;
+    const before = out.at(-2);
+    if (before && last && (sameX(before, last) ? sameX(last, p) : sameY(last, p))) {
+      out[out.length - 1] = p;
+      continue;
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+const sameX = (a: Point, b: Point) => Math.abs(a.x - b.x) < 0.5;
+const sameY = (a: Point, b: Point) => Math.abs(a.y - b.y) < 0.5;
 
 /**
  * Runs down a vertical lane from the last of `start`, stepping the lane outwards past any
@@ -344,6 +517,8 @@ function isClear(points: Point[], boxes: Box[]): boolean {
   }
   return true;
 }
+
+const mirror = (box: Box): Box => ({ ...box, x: -box.x - box.width });
 
 const centerX = (box: Box) => box.x + box.width / 2;
 const top = (box: Box): Point => ({ x: centerX(box), y: box.y });
