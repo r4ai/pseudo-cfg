@@ -213,7 +213,8 @@
 .cfg-shape-end {
   fill: var(--diagram-terminal);
 }
-.cfg-edge {
+/* Scoped so it outranks React Flow's own `.react-flow__edge-path`, whatever order the CSS loads in. */
+.cfg-canvas .cfg-edge {
   stroke-width: 2;
 }
 .cfg-edge.is-back {
