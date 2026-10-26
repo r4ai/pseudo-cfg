@@ -3,7 +3,7 @@
 English | [日本語](architecture.ja.md)
 
 This document explains the internal pipeline of `Pseudo CFG`:
-how Python-like pseudocode is parsed into a control-flow graph, how node identities and positions survive edits, and how orthogonal edges are routed and exported.
+how Python-like and CUDA-like pseudocode is parsed into a control-flow graph, how node identities and positions survive edits, and how orthogonal edges are routed and exported.
 
 ```mermaid
 flowchart TD
@@ -48,9 +48,23 @@ Unlike a strict language parser that aborts on syntax errors, the parser is desi
 - **Fallback rule**
   - Any unrecognized line becomes a `simple` statement
 
+### CUDA-like Syntax (`src/features/cfg/parse-cuda.ts`)
+
+Brace-delimited code is parsed into the same statement tree, so everything downstream is shared.
+
+- **Tokenizing**
+  - Drops `//` and `/* */` comments and preprocessor lines (`#include`, `#pragma unroll`, ...); string and character literals keep their braces and semicolons
+- **Statements**
+  - A statement runs to its `;`; braces inside it (initializer lists, lambda bodies) stay part of the statement, and `kernel<<<grid, block>>>(...)` launches are plain statements
+  - `if` / `else if` / `else`, `while`, `for` (`for (;;)` has no exit), `do` / `while`, and `switch` / `case` / `default` are recognized with or without braces around their bodies
+  - `try` / `catch` is approximated like Python's `try` / `except`
+- **Functions**
+  - Outside function bodies, a `{` after a parameter list opens a function graph labelled with its whole signature
+  - Once a file has functions, top-level declarations (globals, `struct` definitions, prototypes) are left out, since C runs no code outside functions
+
 ## 2. CFG Construction (`src/features/cfg/build-cfg.ts`)
 
-`buildCfg(source, granularity)` converts the parsed statement tree into nodes (`start`, `end`, `block`, `branch`, `loop`) and directed edges.
+`buildCfg(source, granularity, language)` converts the parsed statement tree into nodes (`start`, `end`, `block`, `branch`, `loop`) and directed edges.
 
 - **One connected component per scope**
   - Top-level statements form a `Start` → `End` graph

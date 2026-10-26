@@ -14,17 +14,24 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { toast } from "@/components/ui/toast";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { Language } from "@/features/cfg/build-cfg";
 import { CfgCanvas } from "@/features/diagram/cfg-canvas";
 import { DiagramToolbar } from "@/features/diagram/diagram-toolbar";
 import { CodeEditor, type CodeEditorHandle } from "@/features/editor/code-editor";
 import { ProblemsStatus } from "./problems-status";
-import { EXAMPLES } from "./sample";
+import { EXAMPLES, sampleFor } from "./sample";
 import { shareUrl } from "./share";
 import { useMediaQuery } from "./use-media-query";
 import { useWorkspace } from "./use-workspace";
 
 const REPOSITORY_URL = "https://github.com/r4ai/pseudo-cfg";
+
+const LANGUAGES: { value: Language; name: string; description: string }[] = [
+  { value: "python", name: "Python", description: "Indentation-based, like Python" },
+  { value: "cuda", name: "CUDA", description: "Brace-delimited, like CUDA C++" },
+];
 
 /** Lucide dropped brand icons, so the GitHub mark is inlined. */
 function GitHubIcon() {
@@ -45,7 +52,9 @@ export function Workspace() {
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(shareUrl(state.source, location.href));
+      await navigator.clipboard.writeText(
+        shareUrl({ source: state.source, language: state.language }, location.href),
+      );
       toast.add({
         title: "Link copied",
         description: "Anyone with the link sees this code.",
@@ -57,12 +66,39 @@ export function Workspace() {
     }
   };
 
+  const switchLanguage = (language: Language, source: string) => {
+    dispatch({ type: "setLanguage", language, source });
+    if (source !== state.source) editor.current?.setValue(source);
+  };
+
   return (
     <ResizablePanelGroup orientation={orientation} className="min-h-0 flex-1">
       <ResizablePanel defaultSize={narrow ? "45%" : "40%"} minSize="20%">
         <section aria-label="Pseudocode editor" className="flex h-full flex-col">
           <div className="flex h-9 shrink-0 items-center gap-1 border-b pr-1.5 pl-3">
-            <h2 className="mr-auto text-xs font-medium text-muted-foreground">Pseudocode</h2>
+            <h2 className="text-xs font-medium text-muted-foreground">Pseudocode</h2>
+            <ToggleGroup
+              size="sm"
+              className="mr-auto ml-1"
+              value={[state.language]}
+              onValueChange={(value) => {
+                const next = value[0] as Language | undefined;
+                if (!next) return;
+                // An untouched example is swapped for one in the new language; edited code is kept.
+                const untouched = EXAMPLES.some((example) => example.source === state.source);
+                switchLanguage(next, untouched ? sampleFor(next).source : state.source);
+              }}
+              aria-label="Pseudocode syntax"
+            >
+              {LANGUAGES.map((language) => (
+                <Tooltip key={language.value}>
+                  <TooltipTrigger render={<ToggleGroupItem value={language.value} />}>
+                    {language.name}
+                  </TooltipTrigger>
+                  <TooltipContent>{language.description}</TooltipContent>
+                </Tooltip>
+              ))}
+            </ToggleGroup>
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -107,23 +143,26 @@ export function Workspace() {
                 <ChevronDownIcon data-icon="inline-end" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-60">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel>Replace the code with an example</DropdownMenuLabel>
-                  {EXAMPLES.map((example) => (
-                    <DropdownMenuItem
-                      key={example.name}
-                      onClick={() => editor.current?.setValue(example.source)}
-                    >
-                      {example.name}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuGroup>
+                {LANGUAGES.map((language) => (
+                  <DropdownMenuGroup key={language.value}>
+                    <DropdownMenuLabel>{language.name}</DropdownMenuLabel>
+                    {EXAMPLES.filter((example) => example.language === language.value).map((example) => (
+                      <DropdownMenuItem
+                        key={example.name}
+                        onClick={() => switchLanguage(example.language, example.source)}
+                      >
+                        {example.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
           <CodeEditor
             ref={editor}
             defaultValue={state.source}
+            language={state.language}
             diagnostics={state.diagnostics}
             // The editor owns its text, so the graph can catch up without delaying keystrokes.
             onChange={(source) => startTransition(() => dispatch({ type: "edit", source }))}

@@ -2,7 +2,7 @@
 
 English | [日本語](README.ja.md)
 
-**An interactive web application that generates live, layout-preserving control-flow graphs (CFGs)<br>from Python-like pseudocode**
+**An interactive web application that generates live, layout-preserving control-flow graphs (CFGs)<br>from Python-like or CUDA-like pseudocode**
 
 Live demo: [pseudo-cfg.r4ai.dev](https://pseudo-cfg.r4ai.dev)
 
@@ -17,12 +17,12 @@ Creating control-flow graphs for algorithms, specifications, or lecture slides u
   - Strict parsers break as soon as you write informal pseudocode or mid-edit syntax
 
 `Pseudo CFG` combines a forgiving pseudocode parser with an incremental layout engine.
-You write Python-like pseudocode on the left, fine-tune node positions on the right, and keep your layout intact as the code evolves.
+You write Python-like or CUDA-like pseudocode on the left, fine-tune node positions on the right, and keep your layout intact as the code evolves.
 
 ```mermaid
 flowchart LR
     subgraph Editor["CodeMirror 6 Editor"]
-        Code["Python-like Pseudocode"]
+        Code["Python- / CUDA-like Pseudocode"]
     end
 
     subgraph Engine["CFG & Layout Engine"]
@@ -46,6 +46,7 @@ flowchart LR
 - **Forgiving pseudocode parser**
   - Recognizes `def`, `if` / `elif` / `else`, `while`, `for`, `break`, `continue`, `return`, and `raise`
   - Approximates `try` / `except` and `match` / `case` as branches and treats any other text as a plain statement
+  - Switches to brace-delimited CUDA / C++ syntax: functions such as `__global__` kernels, `if` / `else if` / `else`, `for`, `while`, `do` / `while`, and `switch` with fallthrough
   - Detects unreachable code and indentation errors inline without collapsing the diagram
 - **Edit-preserving incremental layout**
   - Reconciles node IDs across edits using longest common subsequence (LCS) matching

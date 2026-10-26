@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useReducer } from "react";
-import type { Granularity } from "@/features/cfg/build-cfg";
+import type { Granularity, Language } from "@/features/cfg/build-cfg";
 import { SAMPLE_SOURCE } from "./sample";
 import { sharedSource } from "./share";
 import { initWorkspace, type SavedWorkspace, workspaceReducer } from "./workspace-state";
@@ -10,6 +10,7 @@ const STORAGE_KEY = "pseudo-cfg:workspace:v1";
 
 const DEFAULT_WORKSPACE: SavedWorkspace = {
   source: SAMPLE_SOURCE,
+  language: "python",
   granularity: "block",
   cfg: { nodes: [], edges: [] },
   positions: {},
@@ -30,6 +31,7 @@ export function useWorkspace() {
   useEffect(() => {
     const saved: SavedWorkspace = {
       source: state.source,
+      language: state.language,
       granularity: state.granularity,
       cfg: state.cfg,
       positions: state.positions,
@@ -40,7 +42,7 @@ export function useWorkspace() {
     } catch {
       // Storage can be unavailable (private mode, quota); the app works without it.
     }
-  }, [state.source, state.granularity, state.cfg, state.positions, state.edges]);
+  }, [state.source, state.language, state.granularity, state.cfg, state.positions, state.edges]);
 
   return [state, dispatch] as const;
 }
@@ -50,7 +52,7 @@ function loadInitial(): SavedWorkspace {
   const saved = loadSaved();
   const shared = sharedSource(location.hash);
   if (shared === null) return saved;
-  return { ...saved, source: shared, cfg: { nodes: [], edges: [] }, positions: {}, edges: {} };
+  return { ...saved, ...shared, cfg: { nodes: [], edges: [] }, positions: {}, edges: {} };
 }
 
 function loadSaved(): SavedWorkspace {
@@ -64,6 +66,7 @@ function loadSaved(): SavedWorkspace {
 }
 
 const GRANULARITIES: ReadonlySet<string> = new Set<Granularity>(["block", "statement"]);
+const LANGUAGES: ReadonlySet<unknown> = new Set<Language>(["python", "cuda"]);
 
 function isSavedWorkspace(value: unknown): value is SavedWorkspace {
   if (typeof value !== "object" || value === null) return false;
@@ -75,6 +78,7 @@ function isSavedWorkspace(value: unknown): value is SavedWorkspace {
     GRANULARITIES.has(v.granularity) &&
     typeof v.positions === "object" &&
     v.positions !== null &&
+    (v.language === undefined || LANGUAGES.has(v.language)) &&
     (v.edges === undefined || (typeof v.edges === "object" && v.edges !== null)) &&
     Array.isArray(cfg?.nodes) &&
     Array.isArray(cfg?.edges)

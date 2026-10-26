@@ -13,9 +13,41 @@ export type Stmt =
   | { type: "return"; text: string; line: number; endLine: number; raises: boolean }
   | { type: "break" | "continue"; line: number }
   | { type: "if"; branches: IfBranch[] }
-  | { type: "while"; cond: string; line: number; endLine: number; body: Stmt[]; orelse: Stmt[] }
-  | { type: "for"; head: string; line: number; endLine: number; body: Stmt[]; orelse: Stmt[] }
-  | { type: "def"; signature: string; line: number; endLine: number; body: Stmt[] };
+  /** `infinite` loops have no exit but `break` or `return`, such as `while True`. */
+  | {
+      type: "while";
+      cond: string;
+      line: number;
+      endLine: number;
+      body: Stmt[];
+      orelse: Stmt[];
+      infinite: boolean;
+    }
+  | {
+      type: "for";
+      head: string;
+      line: number;
+      endLine: number;
+      body: Stmt[];
+      orelse: Stmt[];
+      infinite: boolean;
+    }
+  /** `do ... while (cond);`: `condLine` is where the trailing condition is. */
+  | {
+      type: "do";
+      cond: string;
+      line: number;
+      condLine: number;
+      endLine: number;
+      body: Stmt[];
+      infinite: boolean;
+    }
+  | { type: "switch"; head: string; line: number; endLine: number; cases: SwitchCase[] }
+  /** `header` is the whole definition line as shown, such as `def f(x)`. */
+  | { type: "def"; header: string; line: number; endLine: number; body: Stmt[] };
+
+/** A `case` of a `switch` and the statements under it; `label` is null for `default`. */
+export type SwitchCase = { label: string | null; line: number; endLine: number; body: Stmt[] };
 
 /** `cond` is `null` for the trailing `else` branch. */
 /** `keyword` labels branches that stand in for other constructs, such as `except`. */
@@ -242,6 +274,7 @@ class Parser {
           endLine: line.endLine,
           body: this.body(line, header),
           orelse: this.elseClause(line.indent),
+          infinite: header.rest === "True",
         };
       case "for":
         return {
@@ -251,11 +284,12 @@ class Parser {
           endLine: line.endLine,
           body: this.body(line, header),
           orelse: this.elseClause(line.indent),
+          infinite: false,
         };
       case "def":
         return {
           type: "def",
-          signature: header.rest,
+          header: `def ${header.rest}`,
           line: line.line,
           endLine: line.endLine,
           body: this.body(line, header),

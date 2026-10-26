@@ -1,4 +1,4 @@
-import { buildCfg, type Cfg, type Granularity } from "@/features/cfg/build-cfg";
+import { buildCfg, type Cfg, type Granularity, type Language } from "@/features/cfg/build-cfg";
 import type { Diagnostic } from "@/features/cfg/parse";
 import { reconcile } from "@/features/cfg/reconcile";
 import { type EdgeOverride, type EdgeOverrides, edgeKey } from "@/features/diagram/geometry";
@@ -6,6 +6,7 @@ import { autoLayout, mostlyReplaced, placeIncrementally, type Positions } from "
 
 export type WorkspaceState = {
   source: string;
+  language: Language;
   granularity: Granularity;
   cfg: Cfg;
   diagnostics: Diagnostic[];
@@ -26,11 +27,15 @@ type LayoutSnapshot = Pick<WorkspaceState, "granularity" | "cfg" | "positions" |
 export type SavedWorkspace = Pick<WorkspaceState, "source" | "granularity" | "cfg" | "positions"> & {
   /** Missing from workspaces saved before edges could be reshaped. */
   edges?: EdgeOverrides;
+  /** Missing from workspaces saved before CUDA-like code was supported. */
+  language?: Language;
 };
 
 export type WorkspaceAction =
   | { type: "edit"; source: string }
   | { type: "setGranularity"; granularity: Granularity }
+  /** Switches the syntax the source is read in, along with the source written in it. */
+  | { type: "setLanguage"; language: Language; source: string }
   | { type: "move"; positions: Positions }
   /** Replaces how the user shaped an edge; null routes it automatically again. */
   | { type: "shapeEdge"; key: string; override: EdgeOverride | null }
@@ -45,7 +50,15 @@ const createId = () => crypto.randomUUID().slice(0, 8);
 
 export function initWorkspace(saved: SavedWorkspace): WorkspaceState {
   return rebuild(
-    { ...saved, edges: saved.edges ?? {}, diagnostics: [], undo: [], redo: [], layoutEpoch: 0 },
+    {
+      ...saved,
+      language: saved.language ?? "python",
+      edges: saved.edges ?? {},
+      diagnostics: [],
+      undo: [],
+      redo: [],
+      layoutEpoch: 0,
+    },
     saved.source,
     saved.granularity,
   );
@@ -60,6 +73,8 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       const next = rebuild(withCheckpoint(state), state.source, action.granularity);
       return relaid(next);
     }
+    case "setLanguage":
+      return rebuild({ ...state, language: action.language }, action.source, state.granularity);
     case "move":
       return { ...state, positions: { ...state.positions, ...action.positions } };
     case "shapeEdge": {
@@ -79,7 +94,7 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
 
 /** Rebuilds the graph from source while keeping ids and positions of unchanged nodes. */
 function rebuild(state: WorkspaceState, source: string, granularity: Granularity): WorkspaceState {
-  const built = buildCfg(source, granularity);
+  const built = buildCfg(source, granularity, state.language);
   const cfg = reconcile(state.cfg, built.cfg, createId);
   const next = {
     ...state,
