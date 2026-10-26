@@ -2,7 +2,7 @@
 
 import { ReactFlowProvider } from "@xyflow/react";
 import { BookOpenIcon, ChevronDownIcon, LinkIcon } from "lucide-react";
-import { startTransition, useRef, useState } from "react";
+import { type ReactNode, startTransition, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,9 +20,12 @@ import type { Language } from "@/features/cfg/build-cfg";
 import { CfgCanvas } from "@/features/diagram/cfg-canvas";
 import { DiagramToolbar } from "@/features/diagram/diagram-toolbar";
 import { CodeEditor, type CodeEditorHandle } from "@/features/editor/code-editor";
+import { FileMenu } from "./file-menu";
+import type { SavedFile } from "./files";
 import { ProblemsStatus } from "./problems-status";
 import { EXAMPLES, sampleFor } from "./sample";
 import { shareUrl } from "./share";
+import { useFiles } from "./use-files";
 import { useMediaQuery } from "./use-media-query";
 import { useWorkspace } from "./use-workspace";
 
@@ -42,9 +45,44 @@ function GitHubIcon() {
   );
 }
 
-/** Editor on the left (or on top on narrow screens), live control-flow graph beside it. */
+/** The open file's workspace; switching files starts a fresh one. */
 export function Workspace() {
-  const [state, dispatch] = useWorkspace();
+  const files = useFiles();
+
+  const deleteFile = (file: SavedFile) => {
+    files.remove(file.id);
+    toast.add({
+      title: `Deleted “${file.name}”`,
+      actionProps: { children: "Undo", onClick: () => files.restore(file) },
+    });
+  };
+
+  return (
+    <FileWorkspace
+      key={files.active.id}
+      file={files.active}
+      fileMenu={
+        <FileMenu
+          files={files.files}
+          active={files.active}
+          onOpen={files.open}
+          onCreate={files.create}
+          onRename={files.rename}
+          onDelete={deleteFile}
+        />
+      }
+    />
+  );
+}
+
+type FileWorkspaceProps = {
+  file: SavedFile;
+  fileMenu: ReactNode;
+};
+
+/** Editor on the left (or on top on narrow screens), live control-flow graph beside it. */
+function FileWorkspace({ file, fileMenu }: FileWorkspaceProps) {
+  const [state, dispatch] = useWorkspace(file.workspace);
   const [cursorLine, setCursorLine] = useState<number | null>(null);
   const editor = useRef<CodeEditorHandle>(null);
   const narrow = useMediaQuery("(max-width: 767px)");
@@ -76,7 +114,8 @@ export function Workspace() {
       <ResizablePanel defaultSize={narrow ? "45%" : "40%"} minSize="20%">
         <section aria-label="Pseudocode editor" className="flex h-full flex-col">
           <div className="flex h-9 shrink-0 items-center gap-1 border-b pr-1.5 pl-3">
-            <h2 className="text-xs font-medium text-muted-foreground">Pseudocode</h2>
+            <h2 className="sr-only">Pseudocode</h2>
+            {fileMenu}
             <ToggleGroup
               size="sm"
               className="mr-auto ml-1"

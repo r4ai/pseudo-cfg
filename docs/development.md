@@ -32,7 +32,10 @@ src/
     workspace/
       workspace.tsx           # Resizable split-pane layout, Examples menu & share link button
       workspace-state.ts      # Pure reducer for edits, node moves, granularity & layout undo/redo
-      use-workspace.ts        # localStorage persistence & URL fragment hydration
+      use-workspace.ts        # Reducer wiring that hands each change to the open file
+      files.ts                # Pure operations on saved files (create, rename, delete, recency)
+      use-files.ts            # localStorage persistence of files & opening shared links as files
+      file-menu.tsx           # File switcher with new / rename / delete
       share.ts                # Base64url encoding/decoding for `#code=...` share URLs
       problems-status.tsx     # Footer status bar for syntax & reachability diagnostics
       sample.ts               # Built-in example pseudocode snippets
@@ -109,6 +112,16 @@ Pushing to `main` triggers [`.github/workflows/deploy.yml`](../.github/workflows
 ```bash
 gh secret set CLOUDFLARE_API_TOKEN --env production
 gh variable set CLOUDFLARE_ACCOUNT_ID --body <account-id>
+```
+
+### Pull Request Previews
+
+[`.github/workflows/preview.yml`](../.github/workflows/preview.yml) builds each pull request from this repository and uploads it with `wrangler versions upload --preview-alias pr-<number>`. The upload creates a Worker version without deploying it, so production keeps serving `main`; the preview URL appears as the pull request's `preview` deployment. Pull requests from forks and Dependabot are skipped because they receive no secrets.
+
+Create a GitHub Environment named `preview` and register a token there (it can be the same Cloudflare token as production):
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN --env preview
 ```
 
 ### Manual Local Deployment

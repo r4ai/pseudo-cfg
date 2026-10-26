@@ -60,7 +60,8 @@ flowchart LR
   - Clicking a node highlights its source lines; moving the editor cursor highlights the active node
   - Switches between basic-block (`Blocks`) and per-statement (`Statements`) granularity
 - **Serverless sharing & crisp export**
-  - Encodes code into `#code=...` URL fragments (never sent to a server) and saves state in `localStorage`
+  - Encodes code into `#code=...` URL fragments (never sent to a server); a shared link opens as a new file
+  - Keeps any number of named files in `localStorage`, saved automatically as you edit
   - Copies 2x retina PNGs to the clipboard or downloads standalone light-theme SVG and PNG files
 
 ## Usage
@@ -79,6 +80,7 @@ flowchart LR
 | `Blocks` / `Statements`                            | Toggle between basic-block nodes and single-statement nodes                  |
 | `Tidy up`                                          | Discard manual adjustments and run a fresh structured layout                 |
 | `Copy PNG` / Export menu                           | Copy a 2x PNG to the clipboard or download as PNG / SVG                      |
+| File menu (top left)                               | Switch between saved files, or create, rename and delete them                |
 | `Examples` / Link button                           | Load sample pseudocode or copy a `#code=...` share URL                       |
 | Problems status bar                                | Open syntax / unreachable-code diagnostics and jump to the line              |
 
