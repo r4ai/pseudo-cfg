@@ -114,6 +114,19 @@ gh secret set CLOUDFLARE_API_TOKEN --env production
 gh variable set CLOUDFLARE_ACCOUNT_ID --body <account-id>
 ```
 
+### Pull Request Previews
+
+[`.github/workflows/preview.yml`](../.github/workflows/preview.yml) は、このリポジトリから作られた Pull Request をビルドし、`wrangler versions upload --preview-alias pr-<番号>` でアップロードする。
+アップロードは Worker のバージョンを作るだけでデプロイはしないため、本番は `main` のまま変わらない。
+プレビュー URL は Pull Request の `preview` デプロイメントとして表示される。
+フォークと Dependabot からの Pull Request はシークレットを受け取れないため、スキップする。
+
+`preview` という GitHub Environment を作成し、トークンを登録する（本番と同じ Cloudflare トークンでよい）。
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN --env preview
+```
+
 ### Manual Local Deployment
 
 ```bash

@@ -1,0 +1,48 @@
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Deploy preview to Cloudflare Workers
+    # Pull requests from forks and Dependabot get no secrets, so they cannot deploy.
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Secrets live in the `preview` environment, kept apart from production's.
+    environment:
+      name: preview
+      url: ${{ steps.upload.outputs.url }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      # No dependency cache here: a poisoned cache must not reach a job holding deploy credentials.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Uploads a version without deploying it, so production traffic is untouched.
+      # The alias gives each pull request a stable URL across pushes.
+      - id: upload
+        run: |
+          pnpm exec wrangler versions upload --preview-alias "pr-$PR_NUMBER"
+          url=$(jq -r 'select(.type == "version-upload") | .preview_alias_url // .preview_url' "$WRANGLER_OUTPUT_FILE_PATH")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.json
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

@@ -114,6 +114,16 @@ gh secret set CLOUDFLARE_API_TOKEN --env production
 gh variable set CLOUDFLARE_ACCOUNT_ID --body <account-id>
 ```
 
+### Pull Request Previews
+
+[`.github/workflows/preview.yml`](../.github/workflows/preview.yml) builds each pull request from this repository and uploads it with `wrangler versions upload --preview-alias pr-<number>`. The upload creates a Worker version without deploying it, so production keeps serving `main`; the preview URL appears as the pull request's `preview` deployment. Pull requests from forks and Dependabot are skipped because they receive no secrets.
+
+Create a GitHub Environment named `preview` and register a token there (it can be the same Cloudflare token as production):
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN --env preview
+```
+
 ### Manual Local Deployment
 
 ```bash
