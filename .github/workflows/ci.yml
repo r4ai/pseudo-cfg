@@ -45,6 +45,19 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+      # The review needs the repository's Dependency graph, a setting no workflow context exposes.
+      - id: graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          if gh api "repos/$REPO/dependency-graph/sbom" --silent; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Dependency graph is disabled; skipping dependency review."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.graph.outputs.enabled == 'true'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: moderate
