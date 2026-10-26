@@ -32,7 +32,10 @@ src/
     workspace/
       workspace.tsx           # リサイズ可能な左右分割ペイン・Examples・共有リンクボタン
       workspace-state.ts      # 編集・ノード移動・粒度変更・Undo / Redo の状態 Reducer
-      use-workspace.ts        # localStorage 永続化・URL フラグメントからの復元
+      use-workspace.ts        # Reducer の配線と、変更を開いているファイルへ渡す処理
+      files.ts                # 保存ファイルの純粋な操作（作成・名前変更・削除・更新順）
+      use-files.ts            # ファイルの localStorage 永続化・共有リンクをファイルとして開く処理
+      file-menu.tsx           # ファイルの切り替え・新規作成・名前変更・削除メニュー
       share.ts                # `#code=...` 共有 URL の Base64url エンコード / デコード
       problems-status.tsx     # 構文エラー・到達不能コードを表示する下部ステータスバー
       sample.ts               # 組み込みサンプル疑似コード集

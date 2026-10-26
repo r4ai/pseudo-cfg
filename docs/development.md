@@ -32,7 +32,10 @@ src/
     workspace/
       workspace.tsx           # Resizable split-pane layout, Examples menu & share link button
       workspace-state.ts      # Pure reducer for edits, node moves, granularity & layout undo/redo
-      use-workspace.ts        # localStorage persistence & URL fragment hydration
+      use-workspace.ts        # Reducer wiring that hands each change to the open file
+      files.ts                # Pure operations on saved files (create, rename, delete, recency)
+      use-files.ts            # localStorage persistence of files & opening shared links as files
+      file-menu.tsx           # File switcher with new / rename / delete
       share.ts                # Base64url encoding/decoding for `#code=...` share URLs
       problems-status.tsx     # Footer status bar for syntax & reachability diagnostics
       sample.ts               # Built-in example pseudocode snippets
