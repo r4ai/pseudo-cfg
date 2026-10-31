@@ -197,8 +197,8 @@ importers:
         specifier: 6.43.14
         version: 6.43.14
       '@dagrejs/dagre':
-        specifier: 3.1.1
-        version: 3.1.1
+        specifier: 3.1.2
+        version: 3.1.2
       '@fontsource-variable/geist':
         specifier: 5.3.0
         version: 5.3.0
@@ -535,11 +535,11 @@ packages:
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
 
-  '@dagrejs/dagre@3.1.1':
-    resolution: {integrity: sha512-zroZB1dFOFiGgv4Xcrn1DckB1o4aOikPqD2NDQPV0WM//CXGcS6xiD0rNkqHmw6FEg4tabt4nxPLwgCWT+Vb2A==}
+  '@dagrejs/dagre@3.1.2':
+    resolution: {integrity: sha512-RdPzG77xlWvILaXKsMMKGe51DBtHLgMbY4sIukgAqJeAe25wMr9+3Ae+uyJaV4xOaK8k6Rn96fbHm5rT3johfA==}
 
-  '@dagrejs/graphlib@4.0.5':
-    resolution: {integrity: sha512-7xrBTqIts3o+PMUZX97wSc+7TUbW+/rULzGNCTP6yooNVDXbzw4Wutg/H/xOutTB/c/k0YqOAavgPh4/Zk9PFA==}
+  '@dagrejs/graphlib@4.0.6':
+    resolution: {integrity: sha512-Hjv7hbfmSBMP4nVXMFt4gusqWWHghQF0qNT4V5KHo4Jatvd+2L5VHKFnnIjXVuDnaHIRz7ZuHSnlf0RuZkOwWA==}
 
   '@dotenvx/dotenvx@1.75.1':
     resolution: {integrity: sha512-/BITOC9dmS/edY2zQwZNicQ059O6RKabtQfyEafV0nGtfYRNHYy1DIPiYVcov40+tob9hfmBnbR963dS+EQ1DQ==}
@@ -4473,11 +4473,11 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
 
-  '@dagrejs/dagre@3.1.1':
+  '@dagrejs/dagre@3.1.2':
     dependencies:
-      '@dagrejs/graphlib': 4.0.5
+      '@dagrejs/graphlib': 4.0.6
 
-  '@dagrejs/graphlib@4.0.5': {}
+  '@dagrejs/graphlib@4.0.6': {}
 
   '@dotenvx/dotenvx@1.75.1':
     dependencies:
