@@ -34,7 +34,7 @@
     "@fontsource-variable/geist": "5.3.0",
     "@lezer/highlight": "1.2.5",
     "@replit/codemirror-indentation-markers": "6.5.3",
-    "@xyflow/react": "12.12.0",
+    "@xyflow/react": "12.12.1",
     "class-variance-authority": "0.7.1",
     "cn": "0.5.0",
     "hono": "4.13.13",
