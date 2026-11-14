@@ -48,20 +48,20 @@
     "waku": "1.0.0-rc.3"
   },
   "devDependencies": {
-    "@rolldown/plugin-babel": "0.2.4",
-    "@tailwindcss/vite": "4.3.3",
-    "@types/node": "26.6.5",
+    "@rolldown/plugin-babel": "0.3.0",
+    "@tailwindcss/vite": "4.3.5",
+    "@types/node": "26.6.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@vitejs/plugin-react": "6.1.2",
+    "@vitejs/plugin-react": "6.2.1",
     "babel-plugin-react-compiler": "1.0.0",
-    "oxfmt": "0.73.0",
-    "oxlint": "1.88.0",
-    "react-doctor": "0.9.18",
-    "tailwindcss": "4.3.3",
-    "typescript": "6.0.3",
-    "vitest": "5.0.5",
-    "wrangler": "4.151.1"
+    "oxfmt": "0.77.0",
+    "oxlint": "1.92.0",
+    "react-doctor": "0.9.22",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0",
+    "wrangler": "4.158.0"
   },
   "engines": {
     "node": ">=24.0.0",
