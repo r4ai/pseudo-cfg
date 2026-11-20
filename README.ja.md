@@ -113,6 +113,34 @@ flowchart LR
 | `⌘F` / `⌘⌥F`（`Ctrl+F` / `Ctrl+H`）       | 検索 / 置換                |
 | `⌃G` / `Ctrl+G`                           | 指定行へ移動               |
 
+### CLI（人間・AI エージェント向け）
+
+`pseudo-cfg` には、スクリプトや AI エージェントから扱いやすいスタンドアロン CLI（`dist/cli.js`）を同梱している。UI と同等のノード移動・エッジの接続辺指定・セグメントのスライド調整・レイアウト品質検査に加え、全コマンドで `--json` 出力に対応する。
+
+```bash
+# CLI をビルド（dist/cli.js）
+pnpm build:cli
+
+# ソースファイルや標準入力からワンショットで SVG 出力
+pnpm cli render algo.py -o algo.svg
+cat kernel.cu | pnpm cli render --lang cuda -o kernel.svg
+
+# ワークスペースを使った反復編集（作成 -> 確認 -> 調整 -> 検査 -> 出力）
+pnpm cli init algo.py -o algo.json
+pnpm cli inspect algo.json --json
+pnpm cli node move algo.json n5 --left-of n3 --gap 48
+pnpm cli edge route algo.json n3->n5:F --from left --to top
+pnpm cli edge shift algo.json e4 1 --at -60
+pnpm cli edge points algo.json e4 --via "420,292 420,220 483,220"
+pnpm cli check algo.json
+pnpm cli render algo.json -o algo.svg
+```
+
+- **直感的なエッジ指定**：エッジはハンドル（`e4`）、省略記法（`n3->n5` や `n3->n5:F`）、内部キー（`n3>n5:False`）のいずれでも指定できる。
+- **差分を保つソース更新**：`pnpm cli source algo.json updated.py` で、手動配置やエッジ調整を維持したままコードを更新できる。
+- **アトミックな一括編集**：`pnpm cli apply algo.json ops.json --render algo.svg` で複数のノード・エッジ・コード編集をまとめて適用できる（`--dry-run` 対応）。
+- 各コマンドの詳細は `pnpm cli --help` または `pnpm cli help <command>` を参照。
+
 ## How It Works
 
 ```mermaid

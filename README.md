@@ -112,6 +112,34 @@ flowchart LR
 | `⌘F` / `⌘⌥F` (`Ctrl+F` / `Ctrl+H`) | Find / replace           |
 | `⌃G` / `Ctrl+G`                    | Go to line               |
 
+### CLI (For Humans & AI Agents)
+
+`pseudo-cfg` includes a standalone CLI (`dist/cli.js`) designed for both scripting and AI-agent workflows, with full parity for UI layout and edge editing plus structured `--json` output and automated routing-quality checks.
+
+```bash
+# Build the CLI bundle (dist/cli.js)
+pnpm build:cli
+
+# One-shot SVG rendering from a source file or stdin
+pnpm cli render algo.py -o algo.svg
+cat kernel.cu | pnpm cli render --lang cuda -o kernel.svg
+
+# Iterative workspace workflow (create -> inspect -> adjust -> check -> render)
+pnpm cli init algo.py -o algo.json
+pnpm cli inspect algo.json --json
+pnpm cli node move algo.json n5 --left-of n3 --gap 48
+pnpm cli edge route algo.json n3->n5:F --from left --to top
+pnpm cli edge shift algo.json e4 1 --at -60
+pnpm cli edge points algo.json e4 --via "420,292 420,220 483,220"
+pnpm cli check algo.json
+pnpm cli render algo.json -o algo.svg
+```
+
+- **Edge selectors**: target any edge by handle (`e4`), shorthand (`n3->n5` or `n3->n5:F`), or exact key (`n3>n5:False`).
+- **Incremental source updates**: `pnpm cli source algo.json updated.py` reconciles node IDs and keeps manual node positions and edge overrides intact.
+- **Atomic batch edits**: `pnpm cli apply algo.json ops.json --render algo.svg` applies multiple node/edge/source edits in one command (with `--dry-run` support).
+- Run `pnpm cli --help` or `pnpm cli help <command>` for full command documentation.
+
 ## How It Works
 
 ```mermaid
