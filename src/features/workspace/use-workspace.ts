@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useReducer } from "react";
-import type { Granularity, Language } from "@/features/cfg/build-cfg";
+import { isSavedWorkspace } from "./diagram-ops";
 import { SAMPLE_SOURCE } from "./sample";
-import { sharedSource } from "./share";
+import { sharedSource, sharedSpec } from "./share";
+import { compileYamlSpec } from "./spec";
 import { initWorkspace, type SavedWorkspace, workspaceReducer } from "./workspace-state";
 
 const STORAGE_KEY = "pseudo-cfg:workspace:v1";
@@ -22,9 +23,9 @@ export function useWorkspace() {
   const [state, dispatch] = useReducer(workspaceReducer, undefined, () => initWorkspace(loadInitial()));
 
   useEffect(() => {
-    // The shared code is now the saved workspace; drop it from the address bar so a
+    // The shared code/spec is now the saved workspace; drop it from the address bar so a
     // reload shows later edits rather than the original link.
-    if (sharedSource(location.hash) !== null)
+    if (sharedSpec(location.hash) !== null || sharedSource(location.hash) !== null)
       history.replaceState(null, "", location.pathname + location.search);
   }, []);
 
@@ -47,9 +48,17 @@ export function useWorkspace() {
   return [state, dispatch] as const;
 }
 
-/** A shared link's code wins over the saved workspace, laid out afresh. */
+/** A shared `#spec=` YAML link or `#code=` link wins over the saved workspace. */
 function loadInitial(): SavedWorkspace {
   const saved = loadSaved();
+  const specYaml = sharedSpec(location.hash);
+  if (specYaml !== null) {
+    try {
+      return compileYamlSpec(specYaml).workspace;
+    } catch {
+      // Corrupt spec link falls back to the saved workspace.
+    }
+  }
   const shared = sharedSource(location.hash);
   if (shared === null) return saved;
   return { ...saved, ...shared, cfg: { nodes: [], edges: [] }, positions: {}, edges: {} };
@@ -63,24 +72,4 @@ function loadSaved(): SavedWorkspace {
   } catch {
     return DEFAULT_WORKSPACE;
   }
-}
-
-const GRANULARITIES: ReadonlySet<string> = new Set<Granularity>(["block", "statement"]);
-const LANGUAGES: ReadonlySet<unknown> = new Set<Language>(["python", "cuda"]);
-
-function isSavedWorkspace(value: unknown): value is SavedWorkspace {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as Record<string, unknown>;
-  const cfg = v.cfg as Record<string, unknown> | undefined;
-  return (
-    typeof v.source === "string" &&
-    typeof v.granularity === "string" &&
-    GRANULARITIES.has(v.granularity) &&
-    typeof v.positions === "object" &&
-    v.positions !== null &&
-    (v.language === undefined || LANGUAGES.has(v.language)) &&
-    (v.edges === undefined || (typeof v.edges === "object" && v.edges !== null)) &&
-    Array.isArray(cfg?.nodes) &&
-    Array.isArray(cfg?.edges)
-  );
 }

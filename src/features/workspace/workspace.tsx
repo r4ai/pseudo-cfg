@@ -22,7 +22,8 @@ import { DiagramToolbar } from "@/features/diagram/diagram-toolbar";
 import { CodeEditor, type CodeEditorHandle } from "@/features/editor/code-editor";
 import { ProblemsStatus } from "./problems-status";
 import { EXAMPLES, sampleFor } from "./sample";
-import { shareUrl } from "./share";
+import { shareSpecUrl, shareUrl } from "./share";
+import { compileYamlSpec, hasCustomLayout, workspaceToYaml } from "./spec";
 import { useMediaQuery } from "./use-media-query";
 import { useWorkspace } from "./use-workspace";
 
@@ -52,17 +53,37 @@ export function Workspace() {
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(
-        shareUrl({ source: state.source, language: state.language }, location.href),
-      );
+      const includesLayout = hasCustomLayout(state);
+      const url = includesLayout
+        ? shareSpecUrl(workspaceToYaml(state), location.href)
+        : shareUrl({ source: state.source, language: state.language }, location.href);
+      await navigator.clipboard.writeText(url);
       toast.add({
         title: "Link copied",
-        description: "Anyone with the link sees this code.",
+        description: includesLayout
+          ? "Anyone with the link sees this code and layout."
+          : "Anyone with the link sees this code.",
         type: "success",
       });
     } catch (error) {
       const description = error instanceof Error ? error.message : String(error);
       toast.add({ title: "Could not copy the link", description, type: "error" });
+    }
+  };
+
+  const importYaml = (yamlText: string) => {
+    try {
+      const { workspace } = compileYamlSpec(yamlText);
+      dispatch({ type: "load", workspace });
+      editor.current?.setValue(workspace.source);
+      toast.add({
+        title: "Imported YAML spec",
+        description: `Loaded ${workspace.cfg.nodes.length} nodes (${workspace.language}, ${workspace.granularity}).`,
+        type: "success",
+      });
+    } catch (error) {
+      const description = error instanceof Error ? error.message : String(error);
+      toast.add({ title: "Could not import YAML", description, type: "error" });
     }
   };
 
@@ -199,12 +220,15 @@ export function Workspace() {
               onOpenNode={(node) => editor.current?.focusLine(node.line)}
             >
               <DiagramToolbar
+                source={state.source}
+                language={state.language}
                 cfg={state.cfg}
                 positions={state.positions}
                 edgeOverrides={state.edges}
                 granularity={state.granularity}
                 onGranularityChange={(granularity) => dispatch({ type: "setGranularity", granularity })}
                 onTidy={() => dispatch({ type: "tidy" })}
+                onImportYaml={importYaml}
               />
             </CfgCanvas>
           </ReactFlowProvider>

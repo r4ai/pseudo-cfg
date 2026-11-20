@@ -113,6 +113,59 @@ flowchart LR
 | `⌘F` / `⌘⌥F`（`Ctrl+F` / `Ctrl+H`）       | 検索 / 置換                |
 | `⌃G` / `Ctrl+G`                           | 指定行へ移動               |
 
+### CLI & 宣言的 YAML（AI エージェント ↔ ブラウザ UI 連携）
+
+`pseudo-cfg` には、**宣言的 YAML 仕様（`diagram.yaml`）** を軸にしたスタンドアロン CLI（`dist/cli.js`）を同梱している。AI エージェントがコードと初期レイアウトのひな形を YAML で生成し、人間がブラウザ UI で視覚的に微調整して YAML に書き戻すワークフローに対応する。
+
+1. **AI が 1 ファイルの宣言的 YAML でひな形を作成**（自動レイアウトの上に、調整したいノード・エッジだけをオーバーレイ指定）：
+
+```yaml
+language: python
+granularity: block
+source: |
+  def classify(x):
+      if x > 0:
+          label = "positive"
+      else:
+          label = "non-positive"
+      return label
+
+layout:
+  nodes:
+    'label = "non-positive"':
+      leftOf: "if x > 0"
+      gap: 48
+  edges:
+    'if x > 0 -> label = "non-positive" [F]':
+      from: left
+      to: top
+```
+
+2. **CLI で構造確認・品質検査・SVG 出力・ブラウザ UI への引き渡し**：
+
+```bash
+# CLI をビルド（dist/cli.js）
+pnpm build:cli
+
+# 構造確認・ルーティング品質検査・SVG レンダリング
+pnpm cli inspect diagram.yaml --json
+pnpm cli check diagram.yaml
+pnpm cli render diagram.yaml -o diagram.svg
+
+# レイアウト込みでブラウザ UI を開く / 共有 URL（#spec=...）を発行
+pnpm cli open diagram.yaml
+pnpm cli share diagram.yaml
+```
+
+3. **ブラウザ UI で微調整して YAML へ書き戻し**：
+   - `#spec=...` リンクを開くか、ツールバーの **Import YAML** から `.yaml` ファイル読み込み／クリップボード貼り付けで UI に反映。
+   - キャンバス上でノード位置やエッジの接続辺・折れ線をドラッグで微調整。
+   - 出力メニューの **Download YAML** / **Copy YAML**（またはレイアウト込みの共有リンクを自動生成するリンクボタン）でリポジトリや AI に戻せる。
+
+- **ワンショット出力**：`pnpm cli render algo.py -o algo.svg`、`cat kernel.cu | pnpm cli render --lang cuda -o kernel.svg`。
+- **命令型 JSON ワークスペース操作**（`init`・`source`・`node move`・`edge route|shift|points|reset`・`apply`・`tidy`）も利用可能。
+- 仕様の詳細は `pnpm cli help yaml` / `pnpm cli --help`、CLI vs YAML の評価ハーネスは `pnpm eval -- --help` を参照。
+
 ## How It Works
 
 ```mermaid

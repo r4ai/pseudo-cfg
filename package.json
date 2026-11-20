@@ -2,10 +2,16 @@
   "name": "pseudo-cfg",
   "version": "0.0.0",
   "private": true,
+  "bin": {
+    "pseudo-cfg": "./dist/cli.js"
+  },
   "type": "module",
   "scripts": {
     "dev": "waku dev",
-    "build": "waku build && node scripts/write-headers.ts",
+    "build": "waku build && node scripts/write-headers.ts && pnpm build:cli",
+    "build:cli": "node scripts/build-cli.ts",
+    "cli": "node dist/cli.js",
+    "eval": "node evals/runner.ts",
     "start": "waku start",
     "typegen": "waku router typegen",
     "typecheck": "tsc",
