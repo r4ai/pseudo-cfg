@@ -39,6 +39,8 @@ export type WorkspaceAction =
   | { type: "move"; positions: Positions }
   /** Replaces how the user shaped an edge; null routes it automatically again. */
   | { type: "shapeEdge"; key: string; override: EdgeOverride | null }
+  /** Replaces the whole workspace (e.g., from an imported YAML spec), preserving undo. */
+  | { type: "load"; workspace: SavedWorkspace }
   | { type: "checkpoint" }
   | { type: "tidy" }
   | { type: "undo" }
@@ -80,6 +82,16 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     case "shapeEdge": {
       const { [action.key]: _, ...rest } = state.edges;
       return { ...state, edges: action.override ? { ...rest, [action.key]: action.override } : rest };
+    }
+    case "load": {
+      const loaded = initWorkspace(action.workspace);
+      const checkpointed = withCheckpoint(state);
+      return {
+        ...loaded,
+        undo: checkpointed.undo,
+        redo: [],
+        layoutEpoch: state.layoutEpoch + 1,
+      };
     }
     case "checkpoint":
       return withCheckpoint(state);

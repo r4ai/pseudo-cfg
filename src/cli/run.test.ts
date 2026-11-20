@@ -240,12 +240,108 @@ describe("pseudo-cfg CLI", () => {
 
     const decodeRes = await run(["share", "--decode", url, "--json"]);
     expect(decodeRes.code).toBe(0);
-    expect(JSON.parse(decodeRes.stdout)).toEqual({ ok: true, source: "if x:\n    y()", language: "python" });
+    expect(JSON.parse(decodeRes.stdout)).toEqual({
+      ok: true,
+      format: "code",
+      source: "if x:\n    y()",
+      language: "python",
+    });
 
     // Initialize workspace directly from share URL
     const fromUrl = await run(["init", "--from-url", url, "-o", "shared.json", "--json"]);
     expect(fromUrl.code).toBe(0);
     expect(JSON.parse(fromUrl.stdout).ok).toBe(true);
+  });
+
+  it("shares and opens declarative YAML specs via #spec= URLs preserving layout", async () => {
+    const run = createRunner(dir);
+    await writeFile(
+      join(dir, "draft.yaml"),
+      `language: python
+source: |
+  if ok:
+      go()
+  else:
+      stop()
+layout:
+  nodes:
+    "stop()":
+      leftOf: "if ok"
+      gap: 48
+  edges:
+    "if ok -> stop() [F]":
+      from: left
+      to: top
+`,
+      "utf8",
+    );
+
+    const openRes = await run(["open", "draft.yaml", "--url-only", "--json"]);
+    expect(openRes.code).toBe(0);
+    const opened = JSON.parse(openRes.stdout);
+    expect(opened.ok).toBe(true);
+    expect(opened.includesLayout).toBe(true);
+    expect(opened.opened).toBe(false);
+    expect(opened.url).toContain("https://pseudo-cfg.r4ai.dev/#spec=");
+
+    const decoded = await run(["share", "--decode", opened.url, "--json"]);
+    expect(decoded.code).toBe(0);
+    expect(JSON.parse(decoded.stdout).format).toBe("spec");
+
+    // init --from-url with #spec= preserves the layout & edge override
+    const fromSpecUrl = await run(["init", "--from-url", opened.url, "-o", "from-url.json", "--json"]);
+    expect(fromSpecUrl.code).toBe(0);
+    const ws = JSON.parse(await readFile(join(dir, "from-url.json"), "utf8"));
+    expect(Object.values(ws.edges)).toContainEqual({ source: "left", target: "top" });
+  });
+
+  it("compiles, inspects, checks, renders, and exports declarative YAML specs", async () => {
+    const run = createRunner(dir);
+    const yamlPath = join(dir, "diagram.yaml");
+    await writeFile(
+      yamlPath,
+      `language: python
+granularity: block
+source: |
+  def classify(x):
+      if x > 0:
+          y = 1
+      else:
+          y = -1
+      return y
+
+layout:
+  nodes:
+    "y = -1":
+      leftOf: "if x > 0"
+      gap: 48
+  edges:
+    "if x > 0 -> y = -1 [F]":
+      from: left
+      to: top
+`,
+      "utf8",
+    );
+
+    const checkRes = await run(["check", "diagram.yaml", "--json"]);
+    expect(checkRes.code).toBe(0);
+    expect(JSON.parse(checkRes.stdout).ok).toBe(true);
+
+    const edgeInspect = await run(["edge", "inspect", "diagram.yaml", "if x > 0 -> y = -1 [F]", "--json"]);
+    expect(edgeInspect.code).toBe(0);
+    expect(JSON.parse(edgeInspect.stdout).edge.sourceSide).toBe("left");
+
+    const renderRes = await run(["render", "diagram.yaml", "-o", "from-yaml.svg", "--json"]);
+    expect(renderRes.code).toBe(0);
+    expect((await readFile(join(dir, "from-yaml.svg"), "utf8")).startsWith("<svg ")).toBe(true);
+
+    // Compile YAML -> workspace JSON -> export-yaml roundtrip
+    const initRes = await run(["init", "diagram.yaml", "-o", "compiled.json", "--json"]);
+    expect(initRes.code).toBe(0);
+    const expRes = await run(["export-yaml", "compiled.json", "-o", "exported.yaml", "--json"]);
+    expect(expRes.code).toBe(0);
+    const exportedText = await readFile(join(dir, "exported.yaml"), "utf8");
+    expect(exportedText).toContain("from: left");
   });
 
   it("executes the built dist/cli.js binary end-to-end", async () => {

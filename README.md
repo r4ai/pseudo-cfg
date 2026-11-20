@@ -112,33 +112,58 @@ flowchart LR
 | `⌘F` / `⌘⌥F` (`Ctrl+F` / `Ctrl+H`) | Find / replace           |
 | `⌃G` / `Ctrl+G`                    | Go to line               |
 
-### CLI (For Humans & AI Agents)
+### CLI & Declarative YAML (AI Agent ↔ Browser UI Workflow)
 
-`pseudo-cfg` includes a standalone CLI (`dist/cli.js`) designed for both scripting and AI-agent workflows, with full parity for UI layout and edge editing plus structured `--json` output and automated routing-quality checks.
+`pseudo-cfg` includes a standalone CLI (`dist/cli.js`) centered on a **declarative YAML spec** (`diagram.yaml`) designed for AI agents and seamless handoff to the browser UI:
+
+1. **AI drafts a diagram in a single YAML file** (code + optional layout & edge overrides layered on top of auto-layout):
+
+```yaml
+language: python
+granularity: block
+source: |
+  def classify(x):
+      if x > 0:
+          label = "positive"
+      else:
+          label = "non-positive"
+      return label
+
+layout:
+  nodes:
+    'label = "non-positive"':
+      leftOf: "if x > 0"
+      gap: 48
+  edges:
+    'if x > 0 -> label = "non-positive" [F]':
+      from: left
+      to: top
+```
+
+2. **Inspect, verify quality, render, and hand off to the browser UI for human fine-tuning**:
 
 ```bash
 # Build the CLI bundle (dist/cli.js)
 pnpm build:cli
 
-# One-shot SVG rendering from a source file or stdin
-pnpm cli render algo.py -o algo.svg
-cat kernel.cu | pnpm cli render --lang cuda -o kernel.svg
+# Inspect geometry, audit routing quality, and render SVG
+pnpm cli inspect diagram.yaml --json
+pnpm cli check diagram.yaml
+pnpm cli render diagram.yaml -o diagram.svg
 
-# Iterative workspace workflow (create -> inspect -> adjust -> check -> render)
-pnpm cli init algo.py -o algo.json
-pnpm cli inspect algo.json --json
-pnpm cli node move algo.json n5 --left-of n3 --gap 48
-pnpm cli edge route algo.json n3->n5:F --from left --to top
-pnpm cli edge shift algo.json e4 1 --at -60
-pnpm cli edge points algo.json e4 --via "420,292 420,220 483,220"
-pnpm cli check algo.json
-pnpm cli render algo.json -o algo.svg
+# Hand off to the browser UI with the full AI layout intact (#spec=... URL)
+pnpm cli open diagram.yaml
+pnpm cli share diagram.yaml
 ```
 
-- **Edge selectors**: target any edge by handle (`e4`), shorthand (`n3->n5` or `n3->n5:F`), or exact key (`n3>n5:False`).
-- **Incremental source updates**: `pnpm cli source algo.json updated.py` reconciles node IDs and keeps manual node positions and edge overrides intact.
-- **Atomic batch edits**: `pnpm cli apply algo.json ops.json --render algo.svg` applies multiple node/edge/source edits in one command (with `--dry-run` support).
-- Run `pnpm cli --help` or `pnpm cli help <command>` for full command documentation.
+3. **Fine-tune visually in the browser UI & export back to YAML**:
+   - Open the `#spec=...` URL (or click the **Import YAML** button in the toolbar to load a `.yaml` file or paste YAML from the clipboard).
+   - Drag nodes and edge handles visually in the UI.
+   - Use **Download YAML** / **Copy YAML** in the export menu (or the **Copy link** button, which automatically encodes `#spec=...` when layout is customized) to bring your fine-tuned diagram back to git or an AI agent.
+
+- **One-shot rendering**: `pnpm cli render algo.py -o algo.svg` and `cat kernel.cu | pnpm cli render --lang cuda -o kernel.svg`.
+- **Imperative JSON workspace commands** (`init`, `source`, `node move`, `edge route|shift|points|reset`, `apply`, `tidy`) are also available for scripted edits.
+- Run `pnpm cli help yaml` or `pnpm cli --help` for full documentation, and `pnpm eval -- --help` for the CLI vs. YAML evaluation harness.
 
 ## How It Works
 

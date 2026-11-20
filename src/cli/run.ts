@@ -1,21 +1,10 @@
+import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { promisify } from "node:util";
 import type { Granularity, Language } from "@/features/cfg/build-cfg";
 import { diagramToSvg } from "@/features/diagram/export-image";
 import { nodeBoxes, routeEdges } from "@/features/diagram/geometry";
-import { EXAMPLES } from "@/features/workspace/sample";
-import { sharedSource, shareUrl } from "@/features/workspace/share";
-import { CliError, parseCliArgs, parseIntegerArg, parseNumberArg } from "./args";
-import {
-  formatDiagnostics,
-  formatEdgeDetail,
-  formatEdgeTable,
-  formatInspection,
-  formatNodeTable,
-  formatQuality,
-} from "./format";
-import { COMMAND_HELP, TOP_HELP } from "./help";
-import { rasterizeSvgToPng } from "./rasterize";
 import {
   applyBatchOps,
   type BatchOp,
@@ -33,7 +22,6 @@ import {
   parsePointList,
   parseSide,
   resetEdge,
-  resolveEdge,
   routeEdgeSides,
   setEdgePoints,
   setWorkspaceGranularity,
@@ -41,7 +29,29 @@ import {
   shiftEdgeSegment,
   tidyWorkspace,
   updateWorkspaceSource,
-} from "./workspace-ops";
+} from "@/features/workspace/diagram-ops";
+import { EXAMPLES } from "@/features/workspace/sample";
+import { sharedSource, sharedSpec, shareSpecUrl, shareUrl } from "@/features/workspace/share";
+import {
+  compileYamlSpec,
+  hasCustomLayout,
+  looksLikeYamlSpec,
+  resolveSemanticEdge,
+  workspaceToYaml,
+} from "@/features/workspace/spec";
+import { CliError, parseCliArgs, parseIntegerArg, parseNumberArg } from "./args";
+import {
+  formatDiagnostics,
+  formatEdgeDetail,
+  formatEdgeTable,
+  formatInspection,
+  formatNodeTable,
+  formatQuality,
+} from "./format";
+import { COMMAND_HELP, TOP_HELP } from "./help";
+import { rasterizeSvgToPng } from "./rasterize";
+
+const execFileAsync = promisify(execFile);
 
 const DEFAULT_SHARE_BASE = "https://pseudo-cfg.r4ai.dev/";
 
@@ -128,6 +138,11 @@ async function dispatch(argv: string[], io: CliIo): Promise<number> {
       return cmdApply(rest, io);
     case "render":
       return cmdRender(rest, io);
+    case "export-yaml":
+    case "to-yaml":
+      return cmdExportYaml(rest, io);
+    case "open":
+      return cmdOpen(rest, io);
     case "share":
       return cmdShare(rest, io);
     case "examples":
@@ -156,18 +171,46 @@ async function cmdInit(argv: string[], io: CliIo): Promise<number> {
     throw new CliError("Missing required option '-o <workspace.json>'. Run 'pseudo-cfg init --help'.");
   }
 
-  const { source, language } = await resolveSourceInput(
-    positionals[0],
-    {
-      ...(values.code !== undefined ? { code: values.code } : {}),
-      ...(values.example !== undefined ? { example: values.example } : {}),
-      ...(values["from-url"] !== undefined ? { fromUrl: values["from-url"] } : {}),
-      ...(values.lang !== undefined ? { lang: values.lang } : {}),
-    },
-    io,
-  );
-  const granularity: Granularity = values.granularity ? parseGranularity(values.granularity) : "block";
-  const { workspace, diagnostics } = createWorkspace(source, { language, granularity });
+  let workspace: CliWorkspace;
+  let diagnostics: ReturnType<typeof createWorkspace>["diagnostics"];
+  const fileArg = positionals[0];
+  if (values["from-url"] !== undefined) {
+    const raw = values["from-url"].trim();
+    const hash = raw.startsWith("#") ? raw : new URL(raw).hash;
+    const specYaml = sharedSpec(hash);
+    if (specYaml !== null) {
+      const compiled = compileYamlSpec(specYaml);
+      workspace = compiled.workspace;
+      diagnostics = compiled.diagnostics;
+    } else {
+      const decoded = sharedSource(hash);
+      if (!decoded) throw new CliError("Invalid or corrupt pseudo-cfg share URL.");
+      const language = values.lang ? parseLanguage(values.lang) : decoded.language;
+      const granularity: Granularity = values.granularity ? parseGranularity(values.granularity) : "block";
+      const created = createWorkspace(decoded.source, { language, granularity });
+      workspace = created.workspace;
+      diagnostics = created.diagnostics;
+    }
+  } else if (fileArg && fileArg !== "-" && isYamlPath(fileArg) && !values.code && !values.example) {
+    const rawYaml = await readFile(resolve(io.cwd, fileArg), "utf8");
+    const compiled = compileYamlSpec(rawYaml);
+    workspace = compiled.workspace;
+    diagnostics = compiled.diagnostics;
+  } else {
+    const { source, language } = await resolveSourceInput(
+      fileArg,
+      {
+        ...(values.code !== undefined ? { code: values.code } : {}),
+        ...(values.example !== undefined ? { example: values.example } : {}),
+        ...(values.lang !== undefined ? { lang: values.lang } : {}),
+      },
+      io,
+    );
+    const granularity: Granularity = values.granularity ? parseGranularity(values.granularity) : "block";
+    const created = createWorkspace(source, { language, granularity });
+    workspace = created.workspace;
+    diagnostics = created.diagnostics;
+  }
 
   if (values.out === "-") {
     io.writeStdout(`${JSON.stringify(workspace, null, 2)}\n`);
@@ -179,11 +222,11 @@ async function cmdInit(argv: string[], io: CliIo): Promise<number> {
   const info = inspectWorkspace(workspace);
   if (values.json) {
     io.writeStdout(
-      `${JSON.stringify({ ok: true, file: values.out, language, granularity, nodes: info.nodes.length, edges: info.edges.length, diagnostics, quality: info.quality }, null, 2)}\n`,
+      `${JSON.stringify({ ok: true, file: values.out, language: workspace.language, granularity: workspace.granularity, nodes: info.nodes.length, edges: info.edges.length, diagnostics, quality: info.quality }, null, 2)}\n`,
     );
   } else {
     io.writeStdout(
-      `Created ${values.out} (${language}, ${granularity}): ${info.nodes.length} nodes, ${info.edges.length} edges, ${diagnostics.length} diagnostics\n`,
+      `Created ${values.out} (${workspace.language}, ${workspace.granularity}): ${info.nodes.length} nodes, ${info.edges.length} edges, ${diagnostics.length} diagnostics\n`,
     );
   }
   return 0;
@@ -401,8 +444,8 @@ async function cmdNode(argv: string[], io: CliIo): Promise<number> {
       return 0;
     }
     const wsArg = positionals[0];
-    if (!wsArg) throw new CliError("Missing <workspace.json>. Run 'pseudo-cfg node --help'.");
-    const workspace = await readWorkspaceFile(resolve(io.cwd, wsArg));
+    if (!wsArg) throw new CliError("Missing <workspace.json|spec.yaml>. Run 'pseudo-cfg node --help'.");
+    const { workspace } = await loadAnyDiagram(wsArg, {}, io);
     const info = inspectWorkspace(workspace);
     if (values.json) {
       io.writeStdout(`${JSON.stringify({ ok: true, nodes: info.nodes }, null, 2)}\n`);
@@ -493,8 +536,8 @@ async function cmdEdge(argv: string[], io: CliIo): Promise<number> {
       return 0;
     }
     const wsArg = positionals[0];
-    if (!wsArg) throw new CliError("Missing <workspace.json>. Run 'pseudo-cfg edge --help'.");
-    const workspace = await readWorkspaceFile(resolve(io.cwd, wsArg));
+    if (!wsArg) throw new CliError("Missing <workspace.json|spec.yaml>. Run 'pseudo-cfg edge --help'.");
+    const { workspace } = await loadAnyDiagram(wsArg, {}, io);
     const info = inspectWorkspace(workspace);
     if (values.json) {
       io.writeStdout(`${JSON.stringify({ ok: true, edges: info.edges }, null, 2)}\n`);
@@ -515,12 +558,12 @@ async function cmdEdge(argv: string[], io: CliIo): Promise<number> {
     }
     const [wsArg, selector] = positionals;
     if (!wsArg || !selector) {
-      throw new CliError("Usage: pseudo-cfg edge inspect <workspace.json> <edge>");
+      throw new CliError("Usage: pseudo-cfg edge inspect <workspace.json|spec.yaml> <edge>");
     }
-    const workspace = await readWorkspaceFile(resolve(io.cwd, wsArg));
+    const { workspace } = await loadAnyDiagram(wsArg, {}, io);
     const boxes = nodeBoxes(workspace.cfg, workspace.positions);
     const routed = routeEdges(workspace.cfg, boxes, workspace.edges);
-    const { edge, index } = resolveEdge(routed, selector);
+    const { edge, index } = resolveSemanticEdge(workspace.cfg.nodes, routed, selector);
     const detail = inspectRoutedEdge(edge, index, workspace.edges);
     if (values.json) {
       io.writeStdout(`${JSON.stringify({ ok: true, edge: detail }, null, 2)}\n`);
@@ -780,11 +823,103 @@ async function cmdRender(argv: string[], io: CliIo): Promise<number> {
   return 0;
 }
 
+async function cmdExportYaml(argv: string[], io: CliIo): Promise<number> {
+  const { positionals, values } = parseCliArgs(argv, {
+    out: { type: "string", short: "o" },
+    lang: { type: "string", short: "l" },
+    granularity: { type: "string", short: "g" },
+    code: { type: "string" },
+    example: { type: "string" },
+    json: { type: "boolean" },
+    help: { type: "boolean", short: "h" },
+  });
+  if (values.help) {
+    io.writeStdout(COMMAND_HELP["export-yaml"] as string);
+    return 0;
+  }
+  const { workspace } = await loadAnyDiagram(
+    positionals[0],
+    {
+      ...(values.lang !== undefined ? { lang: values.lang } : {}),
+      ...(values.granularity !== undefined ? { granularity: values.granularity } : {}),
+      ...(values.code !== undefined ? { code: values.code } : {}),
+      ...(values.example !== undefined ? { example: values.example } : {}),
+    },
+    io,
+  );
+  const yaml = workspaceToYaml(workspace);
+  if (!values.out || values.out === "-") {
+    io.writeStdout(yaml);
+    return 0;
+  }
+  const outPath = resolve(io.cwd, values.out);
+  await mkdir(dirname(outPath), { recursive: true });
+  await writeFile(outPath, yaml, "utf8");
+  if (values.json) {
+    io.writeStdout(
+      `${JSON.stringify({ ok: true, out: values.out, bytes: Buffer.byteLength(yaml, "utf8") }, null, 2)}\n`,
+    );
+  } else {
+    io.writeStdout(`Wrote YAML spec to ${values.out}\n`);
+  }
+  return 0;
+}
+
+async function cmdOpen(argv: string[], io: CliIo): Promise<number> {
+  const { positionals, values } = parseCliArgs(argv, {
+    base: { type: "string" },
+    "url-only": { type: "boolean" },
+    "code-only": { type: "boolean" },
+    lang: { type: "string", short: "l" },
+    granularity: { type: "string", short: "g" },
+    code: { type: "string" },
+    example: { type: "string" },
+    json: { type: "boolean" },
+    help: { type: "boolean", short: "h" },
+  });
+  if (values.help) {
+    io.writeStdout(COMMAND_HELP.open as string);
+    return 0;
+  }
+  const { workspace, rawYaml } = await loadAnyDiagramWithYaml(
+    positionals[0],
+    {
+      ...(values.lang !== undefined ? { lang: values.lang } : {}),
+      ...(values.granularity !== undefined ? { granularity: values.granularity } : {}),
+      ...(values.code !== undefined ? { code: values.code } : {}),
+      ...(values.example !== undefined ? { example: values.example } : {}),
+    },
+    io,
+  );
+
+  const base = values.base ?? DEFAULT_SHARE_BASE;
+  const includeLayout = !values["code-only"] && (rawYaml !== null || hasCustomLayout(workspace));
+  const url = includeLayout
+    ? shareSpecUrl(rawYaml ?? workspaceToYaml(workspace), base)
+    : shareUrl({ source: workspace.source, language: workspace.language }, base);
+
+  const shouldLaunch = !values["url-only"] && !values.json;
+  if (shouldLaunch) {
+    await openUrlInBrowser(url);
+  }
+  if (values.json) {
+    io.writeStdout(
+      `${JSON.stringify({ ok: true, url, includesLayout: includeLayout, opened: shouldLaunch }, null, 2)}\n`,
+    );
+  } else {
+    io.writeStdout(`${url}\n`);
+  }
+  return 0;
+}
+
 async function cmdShare(argv: string[], io: CliIo): Promise<number> {
   const { positionals, values } = parseCliArgs(argv, {
     base: { type: "string" },
     decode: { type: "string" },
+    "code-only": { type: "boolean" },
+    "with-layout": { type: "boolean" },
     lang: { type: "string", short: "l" },
+    granularity: { type: "string", short: "g" },
     code: { type: "string" },
     example: { type: "string" },
     json: { type: "boolean" },
@@ -798,31 +933,49 @@ async function cmdShare(argv: string[], io: CliIo): Promise<number> {
   if (values.decode !== undefined) {
     const raw = values.decode.trim();
     const hash = raw.startsWith("#") ? raw : new URL(raw).hash;
+    const specYaml = sharedSpec(hash);
+    if (specYaml !== null) {
+      if (values.json) {
+        const compiled = compileYamlSpec(specYaml);
+        io.writeStdout(
+          `${JSON.stringify({ ok: true, format: "spec", yaml: specYaml, source: compiled.workspace.source, language: compiled.workspace.language, granularity: compiled.workspace.granularity }, null, 2)}\n`,
+        );
+      } else {
+        io.writeStdout(specYaml.endsWith("\n") ? specYaml : `${specYaml}\n`);
+      }
+      return 0;
+    }
     const decoded = sharedSource(hash);
     if (!decoded) throw new CliError("Invalid or corrupt pseudo-cfg share URL / fragment.");
     if (values.json) {
-      io.writeStdout(`${JSON.stringify({ ok: true, ...decoded }, null, 2)}\n`);
+      io.writeStdout(`${JSON.stringify({ ok: true, format: "code", ...decoded }, null, 2)}\n`);
     } else {
       io.writeStdout(decoded.source.endsWith("\n") ? decoded.source : `${decoded.source}\n`);
     }
     return 0;
   }
 
-  const { workspace } = await loadAnyDiagram(
+  const { workspace, rawYaml } = await loadAnyDiagramWithYaml(
     positionals[0],
     {
       ...(values.lang !== undefined ? { lang: values.lang } : {}),
+      ...(values.granularity !== undefined ? { granularity: values.granularity } : {}),
       ...(values.code !== undefined ? { code: values.code } : {}),
       ...(values.example !== undefined ? { example: values.example } : {}),
     },
     io,
   );
-  const url = shareUrl(
-    { source: workspace.source, language: workspace.language },
-    values.base ?? DEFAULT_SHARE_BASE,
-  );
+  const base = values.base ?? DEFAULT_SHARE_BASE;
+  const includeLayout =
+    !values["code-only"] &&
+    (Boolean(values["with-layout"]) || rawYaml !== null || hasCustomLayout(workspace));
+  const url = includeLayout
+    ? shareSpecUrl(rawYaml ?? workspaceToYaml(workspace), base)
+    : shareUrl({ source: workspace.source, language: workspace.language }, base);
   if (values.json) {
-    io.writeStdout(`${JSON.stringify({ ok: true, url, language: workspace.language }, null, 2)}\n`);
+    io.writeStdout(
+      `${JSON.stringify({ ok: true, url, includesLayout: includeLayout, language: workspace.language }, null, 2)}\n`,
+    );
   } else {
     io.writeStdout(`${url}\n`);
   }
@@ -968,18 +1121,32 @@ async function loadAnyDiagram(
   options: { lang?: string; granularity?: string; code?: string; example?: string },
   io: CliIo,
 ): Promise<{ workspace: CliWorkspace; label?: string }> {
+  const { workspace, label } = await loadAnyDiagramWithYaml(fileArg, options, io);
+  return label !== undefined ? { workspace, label } : { workspace };
+}
+
+async function loadAnyDiagramWithYaml(
+  fileArg: string | undefined,
+  options: { lang?: string; granularity?: string; code?: string; example?: string },
+  io: CliIo,
+): Promise<{ workspace: CliWorkspace; label?: string; rawYaml: string | null }> {
   const granularity: Granularity = options.granularity ? parseGranularity(options.granularity) : "block";
 
   if (options.example !== undefined) {
     const ex = findExample(options.example);
     const language = options.lang ? parseLanguage(options.lang) : ex.language;
-    return { workspace: createWorkspace(ex.source, { language, granularity }).workspace, label: ex.name };
+    return {
+      workspace: createWorkspace(ex.source, { language, granularity }).workspace,
+      label: ex.name,
+      rawYaml: null,
+    };
   }
   if (options.code !== undefined) {
     const language = options.lang ? parseLanguage(options.lang) : "python";
     return {
       workspace: createWorkspace(options.code, { language, granularity }).workspace,
       label: "<inline>",
+      rawYaml: null,
     };
   }
 
@@ -996,17 +1163,20 @@ async function loadAnyDiagram(
     label = "<stdin>";
   } else {
     throw new CliError(
-      "No input provided. Pass a workspace .json file, a source file, stdin, or --code / --example.",
+      "No input provided. Pass a .yaml spec, workspace .json file, source file, stdin, or --code / --example.",
     );
   }
 
-  // Try parsing as a saved workspace JSON when appropriate.
+  if (isYamlPath(extPath) || (!extPath && looksLikeYamlSpec(raw))) {
+    return { workspace: compileYamlSpec(raw).workspace, label, rawYaml: raw };
+  }
+
   const trimmed = raw.trimStart();
   if (trimmed.startsWith("{")) {
     try {
       const parsed: unknown = JSON.parse(raw);
       if (isSavedWorkspace(parsed)) {
-        return { workspace: normalizeWorkspace(parsed), label };
+        return { workspace: normalizeWorkspace(parsed), label, rawYaml: null };
       }
     } catch {
       // Not JSON — fall through and parse as source code (e.g., CUDA block).
@@ -1014,7 +1184,25 @@ async function loadAnyDiagram(
   }
 
   const language = options.lang ? parseLanguage(options.lang) : inferLanguageFromPath(extPath);
-  return { workspace: createWorkspace(raw, { language, granularity }).workspace, label };
+  return { workspace: createWorkspace(raw, { language, granularity }).workspace, label, rawYaml: null };
+}
+
+async function openUrlInBrowser(url: string): Promise<void> {
+  if (process.platform === "darwin") {
+    await execFileAsync("open", [url]);
+    return;
+  }
+  if (process.platform === "win32") {
+    await execFileAsync("cmd", ["/c", "start", "", url]);
+    return;
+  }
+  await execFileAsync("xdg-open", [url]);
+}
+
+function isYamlPath(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  const lower = filePath.toLowerCase();
+  return lower.endsWith(".yaml") || lower.endsWith(".yml");
 }
 
 function findExample(query: string) {

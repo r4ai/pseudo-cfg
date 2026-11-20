@@ -14,7 +14,7 @@ import {
   shiftEdgeSegment,
   tidyWorkspace,
   updateWorkspaceSource,
-} from "./workspace-ops";
+} from "@/features/workspace/diagram-ops";
 
 const SAMPLE = `def check(x):
     if x > 0:

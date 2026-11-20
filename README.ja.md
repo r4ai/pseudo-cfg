@@ -113,33 +113,58 @@ flowchart LR
 | `⌘F` / `⌘⌥F`（`Ctrl+F` / `Ctrl+H`）       | 検索 / 置換                |
 | `⌃G` / `Ctrl+G`                           | 指定行へ移動               |
 
-### CLI（人間・AI エージェント向け）
+### CLI & 宣言的 YAML（AI エージェント ↔ ブラウザ UI 連携）
 
-`pseudo-cfg` には、スクリプトや AI エージェントから扱いやすいスタンドアロン CLI（`dist/cli.js`）を同梱している。UI と同等のノード移動・エッジの接続辺指定・セグメントのスライド調整・レイアウト品質検査に加え、全コマンドで `--json` 出力に対応する。
+`pseudo-cfg` には、**宣言的 YAML 仕様（`diagram.yaml`）** を軸にしたスタンドアロン CLI（`dist/cli.js`）を同梱している。AI エージェントがコードと初期レイアウトのひな形を YAML で生成し、人間がブラウザ UI で視覚的に微調整して YAML に書き戻すワークフローに対応する。
+
+1. **AI が 1 ファイルの宣言的 YAML でひな形を作成**（自動レイアウトの上に、調整したいノード・エッジだけをオーバーレイ指定）：
+
+```yaml
+language: python
+granularity: block
+source: |
+  def classify(x):
+      if x > 0:
+          label = "positive"
+      else:
+          label = "non-positive"
+      return label
+
+layout:
+  nodes:
+    'label = "non-positive"':
+      leftOf: "if x > 0"
+      gap: 48
+  edges:
+    'if x > 0 -> label = "non-positive" [F]':
+      from: left
+      to: top
+```
+
+2. **CLI で構造確認・品質検査・SVG 出力・ブラウザ UI への引き渡し**：
 
 ```bash
 # CLI をビルド（dist/cli.js）
 pnpm build:cli
 
-# ソースファイルや標準入力からワンショットで SVG 出力
-pnpm cli render algo.py -o algo.svg
-cat kernel.cu | pnpm cli render --lang cuda -o kernel.svg
+# 構造確認・ルーティング品質検査・SVG レンダリング
+pnpm cli inspect diagram.yaml --json
+pnpm cli check diagram.yaml
+pnpm cli render diagram.yaml -o diagram.svg
 
-# ワークスペースを使った反復編集（作成 -> 確認 -> 調整 -> 検査 -> 出力）
-pnpm cli init algo.py -o algo.json
-pnpm cli inspect algo.json --json
-pnpm cli node move algo.json n5 --left-of n3 --gap 48
-pnpm cli edge route algo.json n3->n5:F --from left --to top
-pnpm cli edge shift algo.json e4 1 --at -60
-pnpm cli edge points algo.json e4 --via "420,292 420,220 483,220"
-pnpm cli check algo.json
-pnpm cli render algo.json -o algo.svg
+# レイアウト込みでブラウザ UI を開く / 共有 URL（#spec=...）を発行
+pnpm cli open diagram.yaml
+pnpm cli share diagram.yaml
 ```
 
-- **直感的なエッジ指定**：エッジはハンドル（`e4`）、省略記法（`n3->n5` や `n3->n5:F`）、内部キー（`n3>n5:False`）のいずれでも指定できる。
-- **差分を保つソース更新**：`pnpm cli source algo.json updated.py` で、手動配置やエッジ調整を維持したままコードを更新できる。
-- **アトミックな一括編集**：`pnpm cli apply algo.json ops.json --render algo.svg` で複数のノード・エッジ・コード編集をまとめて適用できる（`--dry-run` 対応）。
-- 各コマンドの詳細は `pnpm cli --help` または `pnpm cli help <command>` を参照。
+3. **ブラウザ UI で微調整して YAML へ書き戻し**：
+   - `#spec=...` リンクを開くか、ツールバーの **Import YAML** から `.yaml` ファイル読み込み／クリップボード貼り付けで UI に反映。
+   - キャンバス上でノード位置やエッジの接続辺・折れ線をドラッグで微調整。
+   - 出力メニューの **Download YAML** / **Copy YAML**（またはレイアウト込みの共有リンクを自動生成するリンクボタン）でリポジトリや AI に戻せる。
+
+- **ワンショット出力**：`pnpm cli render algo.py -o algo.svg`、`cat kernel.cu | pnpm cli render --lang cuda -o kernel.svg`。
+- **命令型 JSON ワークスペース操作**（`init`・`source`・`node move`・`edge route|shift|points|reset`・`apply`・`tidy`）も利用可能。
+- 仕様の詳細は `pnpm cli help yaml` / `pnpm cli --help`、CLI vs YAML の評価ハーネスは `pnpm eval -- --help` を参照。
 
 ## How It Works
 

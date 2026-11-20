@@ -1,6 +1,11 @@
 import type { Diagnostic } from "@/features/cfg/parse";
 import type { DiagramQualityReport } from "@/features/diagram/quality";
-import type { EdgeInspection, NodeInspection, SegmentInfo, WorkspaceInspection } from "./workspace-ops";
+import type {
+  EdgeInspection,
+  NodeInspection,
+  SegmentInfo,
+  WorkspaceInspection,
+} from "@/features/workspace/diagram-ops";
 
 export function formatInspection(info: WorkspaceInspection, label?: string): string {
   const lines: string[] = [];

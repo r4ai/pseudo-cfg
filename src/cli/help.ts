@@ -1,64 +1,109 @@
-export const TOP_HELP = `pseudo-cfg — Control-flow graph CLI for humans and AI agents
+export const TOP_HELP = `pseudo-cfg — Declarative YAML & CLI for Control-Flow Graphs (AI Agents + Browser UI)
 
 Usage:
   pseudo-cfg <command> [options]
 
-Workspace lifecycle:
-  init [source-file] -o <file.json>     Create a workspace from file, stdin, --code, or --example
+Recommended AI + Human workflow (Declarative YAML + Browser UI):
+  1. Write a single declarative \`diagram.yaml\` (source + optional layout.nodes / layout.edges)
+  2. Inspect & audit:  pseudo-cfg inspect diagram.yaml --json  &&  pseudo-cfg check diagram.yaml
+  3. Render SVG/PNG:   pseudo-cfg render diagram.yaml -o diagram.svg
+  4. Hand off to UI:   pseudo-cfg open diagram.yaml          (opens browser UI with full layout!)
+                       pseudo-cfg share diagram.yaml         (prints #spec=... share URL)
+  5. After human UI tweaks, export back via UI "Download YAML" / "Copy YAML"
+
+Inspect, verify, render & browser handoff (accepts .yaml, .json, raw source, or stdin):
+  inspect [file]                        Inspect nodes, edges (sides & segments), diagnostics, and quality
+  check [file]                          Verify diagnostics and layout/routing quality (exit 2 on issues)
+  render [file] [-o out.svg|out.png]    Render standalone SVG (or PNG if rasterizer installed)
+  open [file] [--url-only]              Open diagram (with layout!) in the browser UI for fine-tuning
+  share [file] [--decode <url>]         Encode or decode a #spec=... (with layout) or #code=... URL
+  export-yaml [file] [-o spec.yaml]     Export a workspace or source as a declarative YAML spec
+  examples [name]                       List built-in examples or print one
+
+Imperative workspace commands (optional, for scripted JSON workspace mutations):
+  init [file] -o <file.json>            Create a workspace JSON from .yaml, source, --code, or --from-url
   source <file.json> [source-file]      Print source, or update source incrementally (keeps layout)
   set <file.json> [options]             Change --granularity (block|statement) or --lang (python|cuda)
   tidy <file.json>                      Reset manual node positions and edge overrides with auto-layout
-
-Inspect & verify (accepts workspace .json, raw source file, or stdin):
-  inspect [file]                        Show nodes, edges (sides & segments), diagnostics, and quality
-  check [file]                          Verify diagnostics and layout/routing quality (exit 2 on issues)
-
-Adjust nodes (workspace .json):
-  node list <file.json>                 List nodes with coordinates, sizes, centers, and anchors
-  node move <file.json> <id...>         Move nodes (--x/--y, --cx/--cy, --dx/--dy, --below/--left-of/...)
-
-Adjust edges (workspace .json) — full UI parity:
-  edge list <file.json>                 List edges with handles (e0..), sides, modes, and segments
-  edge inspect <file.json> <edge>       Show points, segments (with shift axis/coord), labels, and hops
-  edge route <file.json> <edge>         Pin exit/entry sides (--from / --to: top|right|bottom|left)
-  edge shift <file.json> <edge> <seg>   Slide a segment sideways by <delta> or to --at <coord>
-  edge points <file.json> <edge>        Set explicit orthogonal points or --via intermediate waypoints
-  edge reset <file.json> [<edge>|--all] Return edge(s) to automatic routing
-
-Batch edits & export:
+  node list|move <file> ...             List or move nodes (--x/--y, --cx/--cy, --dx/--dy, --left-of/...)
+  edge list|inspect|route|shift|points|reset <file> ...
+                                        Inspect or adjust edge sides, segment lanes, waypoints, or reset
   apply <file.json> [ops.json|-]        Apply multiple node/edge/source edits atomically
-  render [file] [-o out.svg|out.png]    Render standalone SVG (or PNG if rasterizer installed)
-  share [file] [--decode <url>]         Encode or decode a pseudo-cfg #code=... share URL
-  examples [name]                       List built-in examples or print one
 
 Global options:
   --json                                Machine-readable JSON output (available on every command)
   -h, --help                            Show help for any command
 
-Edge selectors:
-  Reference any edge by handle (e0), shorthand (n3->n5 or n3->n5:F), or exact key (n3>n5:False).
-
-Typical AI-agent workflow:
-  pseudo-cfg init algo.py -o algo.json
-  pseudo-cfg inspect algo.json --json
-  pseudo-cfg node move algo.json n5 --left-of n3 --gap 48
-  pseudo-cfg edge route algo.json n3->n5:F --from left --to top
-  pseudo-cfg edge shift algo.json e4 1 --at -60
-  pseudo-cfg check algo.json
-  pseudo-cfg render algo.json -o algo.svg
-
-One-shot rendering (no workspace file needed):
-  pseudo-cfg render algo.py -o algo.svg
-  cat kernel.cu | pseudo-cfg render --lang cuda -o kernel.svg
-
-Run 'pseudo-cfg help <command>' or 'pseudo-cfg <command> --help' for command details.
+Run 'pseudo-cfg help yaml' for the declarative YAML schema, or 'pseudo-cfg help <command>'.
 `;
 
 export const COMMAND_HELP: Record<string, string> = {
-  init: `Usage:
-  pseudo-cfg init [source-file|-] -o <workspace.json> [options]
+  yaml: `Declarative YAML Spec (.yaml / .yml) — Recommended for AI Agents & Browser UI Handoff
 
-Create a new diagram workspace file from pseudocode.
+A single self-contained YAML file defines pseudocode plus optional layout overrides
+layered on top of structured auto-layout. Pass any .yaml/.yml file directly to
+'render', 'inspect', 'check', 'open', 'share', 'edge inspect', 'node list', or 'init'.
+
+Schema:
+  language: python | cuda          # optional (default: python)
+  granularity: block | statement   # optional (default: block)
+  source: |                        # required pseudocode block
+    ...
+  layout:                          # optional overrides on top of auto-layout
+    snap: false                    # optional global 4px grid snapping
+    nodes:                         # applied in declaration order
+      "<node-selector>":           # node ID (n4), line (L10), exact label, or unique substring
+        x: 100                     # absolute top-left x / y
+        y: 200
+        cx: 150                    # absolute center x / y
+        cy: 220
+        dx: 40                     # relative offset from current position
+        dy: -20
+        below: "<ref-node>"        # relational placement (also: above, leftOf, rightOf, alignX, alignY)
+        gap: 48                    # spacing for relational placement (default: 40)
+        snap: true
+    edges:                         # applied after node positions are settled
+      "<edge-selector>":           # handle (e4), ID pair (n3->n5:F), or labels ("if x -> y [F]")
+        from: left                 # pin source side: top | right | bottom | left
+        to: top                    # pin target side: top | right | bottom | left
+        shift:                     # slide segment(s) sideways (single object or list)
+          - segment: 1
+            at: -80                # exact coordinate (x for vertical, y for horizontal) or delta: -40
+        via:                       # intermediate orthogonal waypoints (anchors auto-added)
+          - [420, 292]
+          - [420, 220]
+        points:                    # OR full orthogonal polyline [[x, y], ...]
+          - [290, 292]
+          - [420, 292]
+`,
+
+  open: `Usage:
+  pseudo-cfg open [file|-] [options]
+
+Open a diagram (.yaml, .json, or raw source) directly in the pseudo-cfg browser UI
+with its full layout and edge overrides intact so a human can fine-tune it visually.
+
+Options:
+  --base <url>                Browser app URL (default: https://pseudo-cfg.r4ai.dev/)
+  --url-only                  Print the URL without launching a browser
+  --code-only                 Encode only source code (#code=...) without layout overrides
+  -l, --lang <python|cuda>    Syntax (for raw source input)
+  -g, --granularity <mode>    block | statement (for raw source input)
+  --code <text>               Inline pseudocode string
+  --example <name>            Open a built-in example
+  --json                      Output { url, includesLayout, opened } as JSON (does not launch browser)
+  -h, --help                  Show this help
+
+Examples:
+  pseudo-cfg open diagram.yaml
+  pseudo-cfg open diagram.yaml --base http://localhost:3000/
+  pseudo-cfg open diagram.yaml --url-only
+`,
+
+  init: `Usage:
+  pseudo-cfg init [file|-] -o <workspace.json> [options]
+
+Create a new workspace JSON file from a .yaml spec, pseudocode file, stdin, or share URL.
 
 Options:
   -o, --out <path>            Output workspace JSON file (required; use '-' for stdout)
@@ -66,15 +111,9 @@ Options:
   -g, --granularity <mode>    Node granularity: block (default) or statement
   --code <text>               Inline pseudocode string instead of a file
   --example <name>            Initialize from a built-in example (see 'pseudo-cfg examples')
-  --from-url <url>            Initialize from a pseudo-cfg #code=... share URL
+  --from-url <url>            Initialize from a #spec=... (with layout) or #code=... share URL
   --json                      Output summary as JSON
   -h, --help                  Show this help
-
-Examples:
-  pseudo-cfg init algo.py -o algo.json
-  pseudo-cfg init kernel.cu -o kernel.json --granularity statement
-  pseudo-cfg init --example "Binary search" -o binary.json
-  cat algo.py | pseudo-cfg init -o algo.json
 `,
 
   source: `Usage:
@@ -88,11 +127,6 @@ Options:
   --code <text>               New inline pseudocode string
   --json                      Output result as JSON
   -h, --help                  Show this help
-
-Examples:
-  pseudo-cfg source algo.json
-  pseudo-cfg source algo.json algo.py
-  cat updated.py | pseudo-cfg source algo.json -
 `,
 
   set: `Usage:
@@ -118,7 +152,7 @@ Discard all manual node positions and edge overrides and run a fresh structured 
 
 Inspect nodes (ID, kind, line, box, center, anchors), edges (handle, key, sides,
 mode, segments), diagnostics, and layout/routing quality.
-Accepts a workspace JSON file, a raw source file, stdin, --code, or --example.
+Accepts a .yaml spec, workspace .json file, raw source file, stdin, --code, or --example.
 
 Options:
   -l, --lang <python|cuda>    Syntax (for raw source input)
@@ -147,15 +181,15 @@ Options:
 `,
 
   node: `Usage:
-  pseudo-cfg node <subcommand> <workspace.json> [args...]
+  pseudo-cfg node <subcommand> <file> [args...]
 
 Subcommands:
-  list <workspace.json>                 List all nodes with positions, sizes, and centers
+  list <file.yaml|file.json>            List all nodes with positions, sizes, and centers
   move <workspace.json> <id...> [opts]  Move one or more nodes
 
 Options for 'node move':
   --x <px>, --y <px>          Set absolute top-left coordinates
-  --cx <px>, --cy <px>        Set absolute center coordinates (handy for aligning varied widths)
+  --cx <px>, --cy <px>        Set absolute center coordinates
   --dx <px>, --dy <px>        Shift relative to current position (supports negative numbers)
   --below <refId>             Place below <refId> (centered on X)
   --above <refId>             Place above <refId> (centered on X)
@@ -163,22 +197,17 @@ Options for 'node move':
   --left-of <refId>           Place to the left of <refId> (centered on Y)
   --align-x <refId>           Align center X with <refId>
   --align-y <refId>           Align center Y with <refId>
-  --gap <px>                  Spacing for --below/--above/--left-of/--right-of (default: 40)
+  --gap <px>                  Spacing for relational placement (default: 40)
   --snap                      Snap resulting coordinates to the 4px UI grid
   --json                      Output updated node info as JSON
-
-Examples:
-  pseudo-cfg node move algo.json n5 --left-of n3 --gap 48
-  pseudo-cfg node move algo.json n4 n5 --dy 32
-  pseudo-cfg node move algo.json n2 --cx 200 --y 160
 `,
 
   edge: `Usage:
-  pseudo-cfg edge <subcommand> <workspace.json> [args...]
+  pseudo-cfg edge <subcommand> <file> [args...]
 
 Subcommands:
-  list <workspace.json>                           List all edges with handles, sides, and segment counts
-  inspect <workspace.json> <edge>                 Show detailed points, segments, label position, and hops
+  list <file.yaml|file.json>                      List all edges with handles, sides, and segment counts
+  inspect <file.yaml|file.json> <edge>            Show detailed points, segments, label position, and hops
   route <workspace.json> <edge> [opts]            Pin exit/entry sides (--from / --to)
   shift <workspace.json> <edge> <seg> [<delta>]   Slide a segment sideways (like dragging in the UI)
   points <workspace.json> <edge> [<pts>] [opts]   Set explicit orthogonal points or --via waypoints
@@ -189,29 +218,6 @@ Edge selector formats:
   n3->n5         Source and target node IDs (when unambiguous)
   n3->n5:F       With label (accepts T/F or True/False/next/done/raise/back)
   n3>n5:False    Exact internal edge key
-
-Options for 'edge route':
-  --from <top|right|bottom|left>   Pin source exit side
-  --to <top|right|bottom|left>     Pin target entry side
-
-Options for 'edge shift':
-  <delta>                          Signed pixel offset (+right/-left for V, +down/-up for H)
-  --by <delta>                     Same as positional <delta>
-  --at <coord>                     Move segment directly to x=<coord> (V) or y=<coord> (H)
-  --snap                           Snap target coordinate to the 4px UI grid
-
-Options for 'edge points':
-  <points>                         Space/semicolon-separated "x,y" pairs or JSON array
-  --via <points>                   Intermediate waypoints only (source & target anchors auto-added)
-  --from <side>, --to <side>       Optional source/target sides for the custom route
-
-Examples:
-  pseudo-cfg edge inspect algo.json e4
-  pseudo-cfg edge route algo.json n3->n5:F --from left --to top
-  pseudo-cfg edge shift algo.json e4 1 -40
-  pseudo-cfg edge shift algo.json e4 1 --at 420
-  pseudo-cfg edge points algo.json e4 --via "420,292 420,220 483,220"
-  pseudo-cfg edge reset algo.json e4
 `,
 
   apply: `Usage:
@@ -226,24 +232,12 @@ Options:
   -r, --render <out.svg>      Also render the updated diagram to an SVG/PNG file
   --json                      Output result summary (including quality report) as JSON
   -h, --help                  Show this help
-
-Operation schema:
-  { "op": "source", "code": "..." }
-  { "op": "granularity", "value": "block" | "statement" }
-  { "op": "language", "value": "python" | "cuda", "code"?: "..." }
-  { "op": "tidy" }
-  { "op": "node.move", "id": "n5" | ["n5","n6"], "x"?, "y"?, "cx"?, "cy"?, "dx"?, "dy"?,
-    "below"?, "above"?, "leftOf"?, "rightOf"?, "alignX"?, "alignY"?, "gap"?, "snap"? }
-  { "op": "edge.route", "edge": "e4", "from"?, "to"? }
-  { "op": "edge.shift", "edge": "e4", "segment": 1, "delta"?: 40, "at"?: 420, "snap"? }
-  { "op": "edge.points", "edge": "e4", "points"?: [{ "x": 0, "y": 0 }], "via"?: [...], "from"?, "to"? }
-  { "op": "edge.reset", "edge"?: "e4", "all"?: true }
 `,
 
   render: `Usage:
   pseudo-cfg render [file|-] [-o out.svg|out.png] [options]
 
-Render a workspace JSON file or raw pseudocode directly to standalone SVG (default)
+Render a .yaml spec, workspace .json, or raw pseudocode directly to standalone SVG (default)
 or PNG (when -o ends in .png or --format png, using resvg / rsvg-convert / inkscape / magick).
 
 Options:
@@ -262,17 +256,28 @@ Options:
   pseudo-cfg share [file|-] [options]
   pseudo-cfg share --decode <url-or-hash> [--json]
 
-Encode pseudocode (or a workspace's source) into a pseudo-cfg #code=... share URL,
-or decode a share URL back into source code.
+Encode a diagram into a browser handoff URL:
+- Uses #spec=... (preserving full YAML layout & edge overrides) when the input is a
+  .yaml spec, has custom layout, or --with-layout is set.
+- Uses #code=... (code only) for plain source files or when --code-only is passed.
 
 Options:
   --base <url>                Base URL (default: https://pseudo-cfg.r4ai.dev/)
-  --decode <url-or-hash>      Decode a share URL or #code=... fragment
+  --decode <url-or-hash>      Decode a #spec=... or #code=... share URL
+  --with-layout               Always encode as #spec=... YAML
+  --code-only                 Encode only source code as #code=...
   -l, --lang <python|cuda>    Syntax (for raw source input)
+  -g, --granularity <mode>    block | statement (for raw source input)
   --code <text>               Inline pseudocode string
   --example <name>            Share a built-in example
   --json                      Output structured JSON
   -h, --help                  Show this help
+`,
+
+  "export-yaml": `Usage:
+  pseudo-cfg export-yaml [file|-] [-o spec.yaml] [options]
+
+Export a workspace JSON or raw source as a declarative YAML overlay spec.
 `,
 
   examples: `Usage:

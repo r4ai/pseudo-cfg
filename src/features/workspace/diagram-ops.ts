@@ -27,8 +27,7 @@ import {
   type Positions,
 } from "@/features/diagram/layout";
 import { checkDiagramQuality, type DiagramQualityReport } from "@/features/diagram/quality";
-import type { SavedWorkspace } from "@/features/workspace/workspace-state";
-import { CliError } from "./args";
+import type { SavedWorkspace } from "./workspace-state";
 
 export type CliWorkspace = {
   source: string;
@@ -157,20 +156,20 @@ export function inferLanguageFromPath(filePath: string | undefined): Language {
 
 export function parseLanguage(raw: string): Language {
   if (raw === "python" || raw === "cuda") return raw;
-  throw new CliError(`Invalid language '${raw}'. Expected 'python' or 'cuda'.`);
+  throw new Error(`Invalid language '${raw}'. Expected 'python' or 'cuda'.`);
 }
 
 export function parseGranularity(raw: string): Granularity {
   if (raw === "block" || raw === "statement") return raw;
-  throw new CliError(`Invalid granularity '${raw}'. Expected 'block' or 'statement'.`);
+  throw new Error(`Invalid granularity '${raw}'. Expected 'block' or 'statement'.`);
 }
 
 export function parseSide(raw: string): Side {
   if (VALID_SIDES.has(raw)) return raw as Side;
-  throw new CliError(`Invalid side '${raw}'. Expected one of: top, right, bottom, left.`);
+  throw new Error(`Invalid side '${raw}'. Expected one of: top, right, bottom, left.`);
 }
 
-/** Deterministic sequential IDs (`n0`, `n1`, ...) so CLI workspaces stay readable and diff-friendly. */
+/** Deterministic sequential IDs (`n0`, `n1`, ...) so workspaces stay readable and diff-friendly. */
 export function createSequentialIdGenerator(existingIds: Iterable<string>): () => string {
   let max = -1;
   for (const id of existingIds) {
@@ -318,7 +317,6 @@ export function inspectWorkspace(workspace: CliWorkspace): WorkspaceInspection {
   const edges: EdgeInspection[] = routed.map((edge, index) =>
     inspectRoutedEdge(edge, index, workspace.edges),
   );
-
   const bounds = computeBounds(boxes, routed);
 
   return {
@@ -387,26 +385,23 @@ export function edgeSegments(points: Point[]): SegmentInfo[] {
 export function resolveEdge(routed: RoutedEdge[], selector: string): { edge: RoutedEdge; index: number } {
   const trimmed = selector.trim();
 
-  // 1. e<index> or bare <index>
   const indexMatch = /^e?(\d+)$/i.exec(trimmed);
   if (indexMatch) {
     const index = Number(indexMatch[1]);
     const edge = routed[index];
     if (!edge) {
-      throw new CliError(
+      throw new Error(
         `Edge '${selector}' is out of range (valid: ${routed.length > 0 ? `e0..e${routed.length - 1}` : "none"}).`,
       );
     }
     return { edge, index };
   }
 
-  // 2. Exact edgeKey match
   const exactIndex = routed.findIndex((e) => e.key === trimmed);
   if (exactIndex >= 0) {
     return { edge: routed[exactIndex] as RoutedEdge, index: exactIndex };
   }
 
-  // 3. Arrow / pair shorthand: src->tgt[:qual] or src>tgt[:qual]
   const pairMatch = /^([^>:-\s]+)\s*(?:->|>)\s*([^>:\s]+)(?::(.*))?$/.exec(trimmed);
   if (pairMatch) {
     const src = pairMatch[1] as string;
@@ -420,21 +415,21 @@ export function resolveEdge(routed: RoutedEdge[], selector: string): { edge: Rou
     if (matched.length === 1) return matched[0] as { edge: RoutedEdge; index: number };
     if (matched.length > 1) {
       const list = matched.map(({ edge, index }) => `e${index} (${edge.key})`).join(", ");
-      throw new CliError(`Ambiguous edge selector '${selector}'. Matches: ${list}`);
+      throw new Error(`Ambiguous edge selector '${selector}'. Matches: ${list}`);
     }
     if (candidates.length > 0) {
       const list = candidates.map(({ edge, index }) => `e${index} (${edge.key})`).join(", ");
-      throw new CliError(`No edge matched '${selector}'. Edges between ${src} and ${tgt}: ${list}`);
+      throw new Error(`No edge matched '${selector}'. Edges between ${src} and ${tgt}: ${list}`);
     }
     const outgoing = routed.map((edge, index) => ({ edge, index })).filter(({ edge }) => edge.source === src);
     const hint =
       outgoing.length > 0
         ? ` Outgoing edges from ${src}: ${outgoing.map(({ edge, index }) => `e${index} (${edge.source}->${edge.target}${edge.label ? `:${shortLabel(edge.label)}` : ""})`).join(", ")}`
         : "";
-    throw new CliError(`Edge '${selector}' not found.${hint}`);
+    throw new Error(`Edge '${selector}' not found.${hint}`);
   }
 
-  throw new CliError(
+  throw new Error(
     `Edge '${selector}' not found. Use an index (e0), shorthand (n1->n2 or n1->n2:F), or exact key (n1>n2:False).`,
   );
 }
@@ -464,7 +459,7 @@ export function resolveNode(workspace: CliWorkspace, id: string): CfgNode {
   const node = workspace.cfg.nodes.find((n) => n.id === id);
   if (!node) {
     const ids = workspace.cfg.nodes.map((n) => n.id).join(", ");
-    throw new CliError(`Node '${id}' not found. Available nodes: ${ids || "(none)"}`);
+    throw new Error(`Node '${id}' not found. Available nodes: ${ids || "(none)"}`);
   }
   return node;
 }
@@ -475,7 +470,7 @@ export function moveNodes(
   ids: string[],
   options: MoveNodeOptions,
 ): { workspace: CliWorkspace; moved: NodeInspection[] } {
-  if (ids.length === 0) throw new CliError("Specify at least one node ID to move.");
+  if (ids.length === 0) throw new Error("Specify at least one node ID to move.");
   const hasAnyMove =
     options.x !== undefined ||
     options.y !== undefined ||
@@ -490,7 +485,7 @@ export function moveNodes(
     options.alignX !== undefined ||
     options.alignY !== undefined;
   if (!hasAnyMove) {
-    throw new CliError(
+    throw new Error(
       "Specify at least one placement option (--x, --y, --cx, --cy, --dx, --dy, --below, --above, --left-of, --right-of, --align-x, --align-y).",
     );
   }
@@ -502,7 +497,7 @@ export function moveNodes(
   const refBox = (refId: string): Box => {
     resolveNode(workspace, refId);
     const box = boxes.get(refId);
-    if (!box) throw new CliError(`Reference node '${refId}' has no position.`);
+    if (!box) throw new Error(`Reference node '${refId}' has no position.`);
     return box;
   };
 
@@ -592,14 +587,13 @@ export function routeEdgeSides(
   options: { from?: Side; to?: Side },
 ): { workspace: CliWorkspace; edge: EdgeInspection } {
   if (!options.from && !options.to) {
-    throw new CliError("Specify --from <side> and/or --to <side> (top, right, bottom, left).");
+    throw new Error("Specify --from <side> and/or --to <side> (top, right, bottom, left).");
   }
   const boxes = nodeBoxes(workspace.cfg, workspace.positions);
   const routed = routeEdges(workspace.cfg, boxes, workspace.edges);
   const { edge, index } = resolveEdge(routed, selector);
 
   const existing = workspace.edges[edge.key] ?? {};
-  // Drop custom drawn points when changing an endpoint side, matching UI behavior.
   const nextOverride: EdgeOverride = {};
   const nextSource = options.from ?? existing.source;
   const nextTarget = options.to ?? existing.target;
@@ -629,10 +623,10 @@ export function shiftEdgeSegment(
   options: { delta?: number; at?: number; snap?: boolean },
 ): { workspace: CliWorkspace; edge: EdgeInspection } {
   if (options.delta === undefined && options.at === undefined) {
-    throw new CliError("Specify either a relative <delta> or --at <coordinate>.");
+    throw new Error("Specify either a relative <delta> or --at <coordinate>.");
   }
   if (options.delta !== undefined && options.at !== undefined) {
-    throw new CliError("Specify either <delta> or --at <coordinate>, not both.");
+    throw new Error("Specify either <delta> or --at <coordinate>, not both.");
   }
 
   const boxes = nodeBoxes(workspace.cfg, workspace.positions);
@@ -642,12 +636,12 @@ export function shiftEdgeSegment(
   const segments = edgeSegments(points);
   const seg = segments[segIndex];
   if (!seg) {
-    throw new CliError(
+    throw new Error(
       `Segment ${segIndex} does not exist on ${edge.key} (valid segments: 0..${segments.length - 1}).`,
     );
   }
   if (seg.shiftAxis === null || seg.coord === null) {
-    throw new CliError(`Segment ${segIndex} on ${edge.key} is diagonal and cannot be shifted orthogonally.`);
+    throw new Error(`Segment ${segIndex} on ${edge.key} is diagonal and cannot be shifted orthogonally.`);
   }
 
   let offset = options.at !== undefined ? options.at - seg.coord : (options.delta as number);
@@ -671,7 +665,7 @@ export function shiftEdgeSegment(
       edge.targetSide,
     )
   ) {
-    throw new CliError(
+    throw new Error(
       `Shifting segment ${segIndex} by ${round2(offset)}px would reverse the edge into ${edge.source} (${edge.sourceSide}) or ${edge.target} (${edge.targetSide}). Try a smaller shift or change sides with 'edge route'.`,
     );
   }
@@ -700,10 +694,10 @@ export function setEdgePoints(
   options: { points?: Point[]; via?: Point[]; from?: Side; to?: Side },
 ): { workspace: CliWorkspace; edge: EdgeInspection } {
   if (!options.points && !options.via) {
-    throw new CliError("Specify either full points or --via intermediate waypoints.");
+    throw new Error("Specify either full points or --via intermediate waypoints.");
   }
   if (options.points && options.via) {
-    throw new CliError("Specify either full points or --via, not both.");
+    throw new Error("Specify either full points or --via, not both.");
   }
 
   const boxes = nodeBoxes(workspace.cfg, workspace.positions);
@@ -719,17 +713,16 @@ export function setEdgePoints(
 
   const raw = options.via ? [s, ...options.via, t] : (options.points as Point[]);
   if (raw.length < 2) {
-    throw new CliError("An edge polyline must contain at least 2 points.");
+    throw new Error("An edge polyline must contain at least 2 points.");
   }
 
-  // Validate orthogonality of every segment so agents get immediate, actionable feedback.
   for (let i = 0; i < raw.length - 1; i++) {
     const a = raw[i] as Point;
     const b = raw[i + 1] as Point;
     const dx = Math.abs(b.x - a.x);
     const dy = Math.abs(b.y - a.y);
     if (dx >= 0.5 && dy >= 0.5) {
-      throw new CliError(
+      throw new Error(
         `Segment ${i} from (${round2(a.x)}, ${round2(a.y)}) to (${round2(b.x)}, ${round2(b.y)}) is diagonal. Every consecutive pair must share either x or y. (Source anchor on '${sourceSide}' is (${round2(s.x)}, ${round2(s.y)}); target anchor on '${targetSide}' is (${round2(t.x)}, ${round2(t.y)}).)`,
       );
     }
@@ -737,23 +730,22 @@ export function setEdgePoints(
 
   const simplified = simplify(raw);
   if (simplified.length < 2) {
-    throw new CliError("Edge points collapsed to fewer than 2 distinct points.");
+    throw new Error("Edge points collapsed to fewer than 2 distinct points.");
   }
 
   let finalPoints: Point[] | undefined;
   if (simplified.length >= 3) {
     const anchored = reanchor(simplified, s, sourceSide, t, targetSide);
     if (!anchored) {
-      throw new CliError(
+      throw new Error(
         `Route does not leave '${edge.source}' outward from '${sourceSide}' (${round2(s.x)}, ${round2(s.y)}) or enter '${edge.target}' into '${targetSide}' (${round2(t.x)}, ${round2(t.y)}). Adjust the first/last waypoints or pass --from/--to.`,
       );
     }
     finalPoints = anchored.map(roundPoint);
   } else {
-    // 2-point straight line: validate direction outward from sourceSide and into targetSide.
     const [a, b] = simplified as [Point, Point];
     if (!segmentLeavesSide(a, b, sourceSide) || !segmentLeavesSide(b, a, targetSide)) {
-      throw new CliError(
+      throw new Error(
         `Straight segment does not align with sides '${sourceSide}' -> '${targetSide}'. Pass --from/--to or add intermediate bend points.`,
       );
     }
@@ -811,7 +803,7 @@ export function applyBatchOps(
       current = applySingleOp(current, op);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      throw new CliError(`Operation #${i} (${op.op}) failed: ${msg}`);
+      throw new Error(`Operation #${i} (${op.op}) failed: ${msg}`, { cause: error });
     }
   }
   return { workspace: current, applied: ops.length };
@@ -851,7 +843,7 @@ function applySingleOp(workspace: CliWorkspace, op: BatchOp): CliWorkspace {
       }).workspace;
     case "edge.reset":
       if (op.all) return resetEdge(workspace, { all: true }).workspace;
-      if (!op.edge) throw new CliError("edge.reset requires 'edge' or 'all: true'.");
+      if (!op.edge) throw new Error("edge.reset requires 'edge' or 'all: true'.");
       return resetEdge(workspace, op.edge).workspace;
   }
 }
@@ -864,9 +856,9 @@ export function parsePointList(raw: string): Point[] {
     try {
       parsed = JSON.parse(trimmed);
     } catch {
-      throw new CliError(`Invalid JSON point list: ${raw}`);
+      throw new Error(`Invalid JSON point list: ${raw}`);
     }
-    if (!Array.isArray(parsed)) throw new CliError("Point list JSON must be an array.");
+    if (!Array.isArray(parsed)) throw new Error("Point list JSON must be an array.");
     return parsed.map((item, idx) => {
       if (Array.isArray(item) && item.length === 2 && isFiniteNum(item[0]) && isFiniteNum(item[1])) {
         return { x: item[0], y: item[1] };
@@ -882,7 +874,7 @@ export function parsePointList(raw: string): Point[] {
           y: (item as Record<string, number>).y as number,
         };
       }
-      throw new CliError(`Invalid point at index ${idx}: expected {x, y} or [x, y].`);
+      throw new Error(`Invalid point at index ${idx}: expected {x, y} or [x, y].`);
     });
   }
 
@@ -890,16 +882,16 @@ export function parsePointList(raw: string): Point[] {
     .split(/[\s;]+/)
     .map((t) => t.trim())
     .filter((t) => t.length > 0);
-  if (tokens.length === 0) throw new CliError("Point list is empty.");
+  if (tokens.length === 0) throw new Error("Point list is empty.");
   return tokens.map((token) => {
     const parts = token.split(",");
     if (parts.length !== 2) {
-      throw new CliError(`Invalid point '${token}'. Expected 'x,y' (e.g. '120,240').`);
+      throw new Error(`Invalid point '${token}'. Expected 'x,y' (e.g. '120,240').`);
     }
     const x = Number(parts[0]);
     const y = Number(parts[1]);
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      throw new CliError(`Invalid coordinates in point '${token}'.`);
+      throw new Error(`Invalid coordinates in point '${token}'.`);
     }
     return { x, y };
   });
